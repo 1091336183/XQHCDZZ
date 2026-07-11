@@ -107,7 +107,6 @@
     gap: 8px;
     flex-wrap: wrap;
   }
-  #pad-level-display { font-size: 12px; color: #ccc; }
   .btn-upgrade {
     background: linear-gradient(135deg, #9933FF, #7722CC);
     color: white;
@@ -189,10 +188,6 @@
       justify-content: center;
     }
 
-    #pad-level-display {
-      font-size: 13px;
-    }
-
     .toast {
       font-size: 14px;
       padding: 10px 20px;
@@ -257,7 +252,6 @@
     </div>
     <div class="bottom-row">
       <button class="btn-buy-pad" id="btn-buy-pad" onclick="buyNextPad()">购买弹跳板</button>
-      <span id="pad-level-display">弹跳板 Lv.1</span>
       <button class="btn-upgrade" id="btn-upgrade" onclick="upgradeAllBouncePads()" disabled>升级弹跳板</button>
     </div>
   </div>
@@ -681,6 +675,19 @@ function getUpgradeCost(curLv) {
 }
 function addCoins(amt) { gameState.coins += amt; }
 
+function formatGold(n) {
+  if (n < 10000) return n.toString();
+  if (n < 1000000) {
+    const v = n / 10000;
+    return (v % 1 === 0 ? v.toFixed(0) : v.toFixed(1)) + '万';
+  }
+  if (n < 100000000) {
+    return (n / 10000).toFixed(0) + '万';
+  }
+  const v = n / 100000000;
+  return (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')) + '亿';
+}
+
 // ==================== 粒子 ====================
 function spawnParticles(x, y, color, count) {
   for (let i = 0; i < count; i++) {
@@ -744,7 +751,7 @@ function spawnBall() {
   const sl = gameState.spawnLevel;
   const cost = (gameState.balls.length + 1) * 4 * sl * sl;
   if (gameState.coins < cost) {
-    showToast('金币不足！需要 ' + cost + ' 金币', 'error');
+    showToast('金币不足！需要 ' + formatGold(cost) + ' 金币', 'error');
     return;
   }
   gameState.coins -= cost;
@@ -763,7 +770,7 @@ function upgradeSpawnLevel() {
   const curLv = gameState.spawnLevel;
   const cost = curLv * curLv * 100000;
   if (gameState.coins < cost) {
-    showToast('金币不足！需要 ' + cost.toLocaleString() + ' 金币', 'error');
+    showToast('金币不足！需要 ' + formatGold(cost) + ' 金币', 'error');
     return;
   }
   gameState.coins -= cost;
@@ -788,7 +795,7 @@ function mergeBalls(level) {
   }
   const cost = getMergeCost(level);
   if (gameState.coins < cost) {
-    showToast('金币不足！需要 ' + cost + ' 金币', 'error');
+    showToast('金币不足！需要 ' + formatGold(cost) + ' 金币', 'error');
     return;
   }
   gameState.coins -= cost;
@@ -864,7 +871,7 @@ function spawnBatch100() {
   const sl = gameState.spawnLevel;
   const totalCost = 4 * sl * sl * (n * cur + n * (n + 1) / 2);
   if (gameState.coins < totalCost) {
-    showToast('金币不足！需要 ' + totalCost + ' 金币', 'error');
+    showToast('金币不足！需要 ' + formatGold(totalCost) + ' 金币', 'error');
     return;
   }
   gameState.coins -= totalCost;
@@ -937,7 +944,7 @@ function buyNextPad() {
   }
   const cost = getUnlockCost(idx);
   if (gameState.coins < cost) {
-    showToast('金币不足！需要 ' + cost + ' 金币', 'error');
+    showToast('金币不足！需要 ' + formatGold(cost) + ' 金币', 'error');
     return;
   }
   gameState.coins -= cost;
@@ -955,7 +962,7 @@ function upgradeAllBouncePads() {
   }
   const cost = getUpgradeCost(gameState.bouncePadLevel);
   if (gameState.coins < cost) {
-    showToast('金币不足！需要 ' + cost + ' 金币', 'error');
+    showToast('金币不足！需要 ' + formatGold(cost) + ' 金币', 'error');
     return;
   }
   gameState.coins -= cost;
@@ -1307,7 +1314,7 @@ function render() {
 
   ctx.fillStyle = '#ffd700';
   ctx.font = 'bold 14px "Microsoft YaHei", Arial';
-  ctx.fillText('金币: ' + gameState.coins, 22, 38);
+  ctx.fillText('金币: ' + formatGold(gameState.coins), 22, 38);
 
   ctx.fillStyle = '#aaa';
   ctx.font = '12px "Microsoft YaHei", Arial';
@@ -1344,7 +1351,7 @@ function updateUI() {
   const spawnBtn = document.getElementById('btn-spawn');
   const sl = gameState.spawnLevel;
   const spawnCost = (gameState.balls.length + 1) * 4 * sl * sl;
-  spawnBtn.textContent = '招募小球(' + spawnCost + '金)';
+  spawnBtn.textContent = '招募小球(' + formatGold(spawnCost) + '金)';
   spawnBtn.disabled = gameState.balls.length >= MAX_BALLS;
 
   // 招募小球升级按钮
@@ -1353,7 +1360,7 @@ function updateUI() {
     const ul = gameState.spawnLevel;
     const upCost = ul * ul * 100000;
     const canUp = gameState.coins >= upCost;
-    upgBtn.textContent = '招募升级(Lv.' + ul + '→' + (ul + 1) + ' ' + upCost.toLocaleString() + '金)';
+    upgBtn.textContent = '招募升级(Lv.' + ul + '→' + (ul + 1) + ' ' + formatGold(upCost) + '金)';
     upgBtn.disabled = !canUp;
     upgBtn.className = canUp ? 'btn-spawn-upgrade ready' : 'btn-spawn-upgrade';
   }
@@ -1364,7 +1371,7 @@ function updateUI() {
     if (bestLv >= 0) {
       const cost = getMergeCost(bestLv);
       const canAfford = gameState.coins >= cost;
-      mergeBtn.textContent = '合成 Lv.' + bestLv + '→' + (bestLv + 1) + ' (' + cost + '金)';
+      mergeBtn.textContent = '合成 Lv.' + bestLv + '→' + (bestLv + 1) + ' (' + formatGold(cost) + '金)';
       mergeBtn.disabled = !canAfford;
       mergeBtn.className = canAfford ? 'btn-merge-main ready' : 'btn-merge-main';
     } else {
@@ -1381,7 +1388,7 @@ function updateUI() {
     const n = Math.min(100, MAX_BALLS - gameState.balls.length);
     const cur = gameState.balls.length;
     const tc = 4 * sl * sl * (n * cur + n * (n + 1) / 2);
-    batchBtn.textContent = '招募' + n + '小球(' + tc + '金)';
+    batchBtn.textContent = '招募' + n + '小球(' + formatGold(tc) + '金)';
     batchBtn.disabled = n <= 0 || gameState.coins < tc;
     batchBtn.className = 'btn-spawn-batch unlocked';
   } else {
@@ -1433,17 +1440,17 @@ function updateUI() {
     buyBtn.className = 'btn-buy-pad';
   } else {
     const c = getUnlockCost(next);
-    buyBtn.textContent = '购买弹跳板(' + c + '金)';
+    buyBtn.textContent = '购买弹跳板(' + formatGold(c) + '金)';
     buyBtn.disabled = false;
     buyBtn.className = gameState.coins >= c ? 'btn-buy-pad ready' : 'btn-buy-pad';
   }
 
-  document.getElementById('pad-level-display').textContent = '弹跳板 Lv.' + gameState.bouncePadLevel;
   const ub = document.getElementById('btn-upgrade');
   const al = gameState.bouncePads.every(p => p.unlocked);
   const uc = getUpgradeCost(gameState.bouncePadLevel);
+  const bl = gameState.bouncePadLevel;
   if (!al) { ub.textContent = '升级弹跳板(需解锁9个)'; ub.disabled = true; }
-  else { ub.textContent = '升级弹跳板(' + uc + '金)'; ub.disabled = gameState.coins < uc; }
+  else { ub.textContent = '升级弹跳板(Lv.' + bl + '→' + (bl + 1) + ' ' + formatGold(uc) + '金)'; ub.disabled = gameState.coins < uc; }
 }
 
 // ==================== 主循环 ====================
