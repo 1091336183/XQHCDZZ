@@ -250,9 +250,72 @@
       padding: 8px 14px;
     }
   }
+  /* 模式选择覆盖层 */
+  #mode-overlay {
+    position: fixed; inset: 0; z-index: 1000;
+    background: rgba(5,5,20,0.95);
+    display: flex; align-items: center; justify-content: center;
+    font-family: "Microsoft YaHei", Arial, sans-serif;
+  }
+  #mode-overlay.hidden { display: none; }
+  #mode-panel {
+    text-align: center;
+    max-width: 460px; width: 90%; padding: 30px 20px;
+    background: #12122a; border: 1px solid #2a2a45; border-radius: 16px;
+  }
+  #mode-panel h1 { font-size: 26px; color: #ffd700; margin-bottom: 4px; letter-spacing: 2px; }
+  #mode-panel .sub { font-size: 13px; color: #666; margin-bottom: 24px; }
+  .btn-m { display: block; width: 100%; padding: 14px; border: none; border-radius: 10px;
+    font-size: 17px; font-weight: bold; cursor: pointer; color: #fff; margin-bottom: 10px;
+    letter-spacing: 2px; transition: all 0.2s; }
+  .btn-m.personal { background: linear-gradient(135deg, #ff9900, #ff6600); color: #000; }
+  .btn-m.personal:hover { box-shadow: 0 0 20px rgba(255,153,0,0.4); }
+  .btn-m.challenge { background: linear-gradient(135deg, #cc3366, #9933cc); }
+  .btn-m.challenge:hover { box-shadow: 0 0 20px rgba(204,51,102,0.4); }
+  #challenge-config { display: none; }
+  #challenge-config.show { display: block; }
+  #challenge-config .cfg-label { font-size: 12px; color: #aaa; margin: 12px 0 6px; text-align: left; }
+  .letter-grid2 { display: grid; grid-template-columns: repeat(9,1fr); gap: 5px; }
+  @media (max-width: 480px) { .letter-grid2 { grid-template-columns: repeat(6,1fr); } }
+  .lt2 { padding: 7px 2px; border: 1px solid #2a2a45; border-radius: 5px; background: #0a0a1a; color: #aaa;
+    font-size: 12px; font-weight: bold; cursor: pointer; font-family: inherit; }
+  .lt2.active { background: #ff9900; color: #000; border-color: #ff9900; }
+  .diff-grid2 { display: grid; grid-template-columns: repeat(2,1fr); gap: 5px; }
+  .df2 { padding: 9px 6px; border: 1px solid #2a2a45; border-radius: 5px; background: #0a0a1a; color: #aaa;
+    font-size: 12px; cursor: pointer; font-family: inherit; }
+  .df2.active { color: #fff; }
+  .df2.d0.active { background: #009944; border-color: #009944; }
+  .df2.d1.active { background: #ff9900; border-color: #ff9900; }
+  .df2.d2.active { background: #cc3333; border-color: #cc3333; }
+  .df2.d3.active { background: #9933cc; border-color: #9933cc; }
+  .btn-start-ch { padding: 12px 30px; border: none; border-radius: 8px; font-size: 15px; font-weight: bold;
+    cursor: pointer; background: linear-gradient(135deg,#009944,#00cc66); color: #fff; margin-top: 14px;
+    letter-spacing: 2px; transition: all 0.2s; }
+  .btn-start-ch:hover { box-shadow: 0 0 20px rgba(0,153,68,0.4); }
+  .btn-back { display: inline-block; padding: 6px 16px; border: 1px solid #333; border-radius: 6px;
+    background: transparent; color: #888; font-size: 12px; cursor: pointer; margin-top: 10px; }
+  .btn-back:hover { color: #aaa; border-color: #555; }
 </style>
 </head>
 <body>
+<!-- 模式选择覆盖层 -->
+<div id="mode-overlay">
+  <div id="mode-panel">
+    <h1>小球合成大作战</h1>
+    <p class="sub">选择你的战斗模式</p>
+    <button class="btn-m personal" onclick="selectMode('personal')">个人模式</button>
+    <button class="btn-m challenge" onclick="showChallengePanel()">挑战模式</button>
+    <div id="challenge-config">
+      <div class="cfg-label">选择比赛字母关卡：</div>
+      <div class="letter-grid2" id="letter-grid2"></div>
+      <div class="cfg-label">电脑难度：</div>
+      <div class="diff-grid2" id="diff-grid2"></div>
+      <button class="btn-start-ch" onclick="startChallengeFromPanel()">开始挑战</button>
+      <br><button class="btn-back" onclick="backToModeSelect()">返回</button>
+    </div>
+  </div>
+</div>
+
 <div id="game-container">
   <div id="top-bar">
     <span id="title">小球合成大作战</span>
@@ -307,6 +370,15 @@ const LETTER_FONT = 'bold 420px "Microsoft YaHei", "PingFang SC", Arial';
 const LETTER_FONT_VISUAL = 'bold 400px "Microsoft YaHei", "PingFang SC", Arial';
 
 const COLOR_SEQUENCE = ['#808080','#00CC66','#3399FF','#9933FF','#FF8800','#FF3333','#FFD700'];
+const HALF_W = CANVAS_W / 2; // 400px 半屏宽度
+
+// 挑战模式专用：半区遮罩Canvas（用于letter碰撞检测）
+const halfMaskCanvas = document.createElement('canvas');
+halfMaskCanvas.width = HALF_W;
+halfMaskCanvas.height = CANVAS_H;
+const halfMaskCtx = halfMaskCanvas.getContext('2d');
+let playerMaskImageData = null;
+let computerMaskImageData = null;
 
 // 弹跳板购买金币自动递增
 function getUnlockCost(padId) {
@@ -355,6 +427,125 @@ function maskGradient(x, y, d) {
   const t = maskAlpha(x, y - d);
   const b = maskAlpha(x, y + d);
   return { gx: r - l, gy: b - t };
+}
+
+// ==================== 挑战模式：半区字母遮罩系统 ====================
+function updateHalfLetterMask(letter, isPlayer) {
+  halfMaskCtx.clearRect(0, 0, HALF_W, CANVAS_H);
+  halfMaskCtx.fillStyle = '#ffffff';
+  halfMaskCtx.font = LETTER_FONT;
+  halfMaskCtx.textAlign = 'center';
+  halfMaskCtx.textBaseline = 'middle';
+  halfMaskCtx.fillText(letter, HALF_W / 2, CANVAS_H / 2 + 12);
+  const imageData = halfMaskCtx.getImageData(0, 0, HALF_W, CANVAS_H);
+  if (isPlayer) {
+    playerMaskImageData = imageData;
+  } else {
+    computerMaskImageData = imageData;
+  }
+}
+
+function halfMaskAlpha(ix, iy, imageData) {
+  if (ix < 0 || ix >= HALF_W || iy < 0 || iy >= CANVAS_H) return 0;
+  if (!imageData) return 0;
+  return imageData.data[(iy * HALF_W + ix) * 4 + 3];
+}
+
+function halfMaskGradient(x, y, d, imageData) {
+  const l = halfMaskAlpha(Math.floor(x - d), y, imageData);
+  const r = halfMaskAlpha(Math.floor(x + d), y, imageData);
+  const t = halfMaskAlpha(x, Math.floor(y - d), imageData);
+  const b = halfMaskAlpha(x, Math.floor(y + d), imageData);
+  return { gx: r - l, gy: b - t };
+}
+
+// 挑战模式下的字母碰撞解决（通用，用于玩家或电脑）
+// xOffset: 0 for player (x in 0-400), 400 for computer (x in 400-800)
+function resolveHalfLetterCollision(ball, bouncePads, bouncePadLevel, stateObj, isPlayer) {
+  const imageData = isPlayer ? playerMaskImageData : computerMaskImageData;
+  if (!imageData) return;
+  const xOffset = isPlayer ? 0 : HALF_W;
+  const localX = ball.x - xOffset;
+
+  const r = ball.radius;
+  const sampleCount = 16;
+  let collisionInfo = null;
+
+  for (let i = 0; i < sampleCount; i++) {
+    const angle = (i / sampleCount) * Math.PI * 2;
+    const sx = localX + Math.cos(angle) * (r + 0.5);
+    const sy = ball.y + Math.sin(angle) * (r + 0.5);
+    if (!halfMaskAlpha(Math.floor(sx), Math.floor(sy), imageData)) {
+      collisionInfo = { x: sx, y: sy, angle };
+      break;
+    }
+  }
+
+  if (collisionInfo) {
+    const d = 6;
+    const grad = halfMaskGradient(collisionInfo.x, collisionInfo.y, d, imageData);
+    let nx = grad.gx;
+    let ny = grad.gy;
+    const len = Math.sqrt(nx * nx + ny * ny);
+    if (len > 0.001) {
+      nx /= len; ny /= len;
+    } else {
+      nx = -Math.cos(collisionInfo.angle);
+      ny = -Math.sin(collisionInfo.angle);
+    }
+    if (!halfMaskAlpha(Math.floor(collisionInfo.x + nx * 8), Math.floor(collisionInfo.y + ny * 8), imageData)) {
+      nx = -nx; ny = -ny;
+    }
+
+    ball.x += nx * (r + 1);
+    ball.y += ny * (r + 1);
+
+    const dot = ball.vx * nx + ball.vy * ny;
+    if (dot < 0) {
+      ball.vx = (ball.vx - 2 * dot * nx) * BOUNCE_DAMPING;
+      ball.vy = (ball.vy - 2 * dot * ny) * BOUNCE_DAMPING;
+      perturbVelocity(ball);
+    }
+
+    if (!ball._letterRewarded) {
+      for (const pad of bouncePads) {
+        if (!pad.unlocked || pad.type !== 'letter') continue;
+        const dx = (collisionInfo.x + xOffset) - pad.x;
+        const dy = collisionInfo.y - pad.y;
+        const pd = Math.sqrt(dx * dx + dy * dy);
+        if (pd < 40) {
+          ball._letterRewarded = true;
+          if (isPlayer) {
+            addCoins(getWallCoinReward(ball.level) * bouncePadLevel * getCoinMultiplier());
+          } else {
+            addCoinsToComputer(getWallCoinReward(ball.level) * bouncePadLevel * getCoinMultiplierFor(stateObj));
+          }
+          spawnHalfParticles(collisionInfo.x + xOffset, collisionInfo.y, getPadColor(bouncePadLevel), 5, isPlayer);
+          break;
+        }
+      }
+    }
+  }
+
+  // 安全网
+  if (!halfMaskAlpha(Math.floor(localX), Math.floor(ball.y), imageData)) {
+    for (let searchD = 3; searchD < 150; searchD += 4) {
+      let found = false;
+      for (let a = 0; a < Math.PI * 2; a += 0.2) {
+        const tx = localX + Math.cos(a) * searchD;
+        const ty = ball.y + Math.sin(a) * searchD;
+        if (halfMaskAlpha(Math.floor(tx), Math.floor(ty), imageData)) {
+          ball.x = tx + xOffset;
+          ball.y = ty;
+          ball.vx = Math.cos(a) * 3;
+          ball.vy = Math.sin(a) * 3;
+          found = true;
+          break;
+        }
+      }
+      if (found) break;
+    }
+  }
 }
 
 // 查找字母轮廓边界点（用于弹跳板布局）
@@ -418,6 +609,8 @@ function initLetterBouncePads() {
   const letter = getStageName(gameState.currentStage);
   updateLetterMask(letter);
   const padPts = findLetterOutlinePads();
+  // 按y降序排列，最下方的弹跳板排最前面（id=0自动解锁）
+  padPts.sort((a, b) => b.y - a.y);
   gameState.bouncePads = padPts.map((pt, i) => ({
     id: i,
     x: pt.x,
@@ -485,7 +678,7 @@ function resolveLetterCollision(ball) {
         const pd = Math.sqrt(dx * dx + dy * dy);
         if (pd < 40) {
           ball._letterRewarded = true;
-          addCoins(getWallCoinReward(ball.level) * gameState.bouncePadLevel * getHighestLevel());
+          addCoins(getWallCoinReward(ball.level) * gameState.bouncePadLevel * getCoinMultiplier());
           spawnParticles(collisionInfo.x, collisionInfo.y, getPadColor(gameState.bouncePadLevel), 5);
           break;
         }
@@ -601,10 +794,11 @@ function getStageFullName(stage) {
 
 function nextStage() {
   if (gameState.currentStage >= 26) {
-    showToast('已通关，敬请期待新版本！', 'success');
-    return;
+    gameState.currentStage = 0;
+    showToast('已通关！回到第0关继续挑战', 'success');
+  } else {
+    gameState.currentStage++;
   }
-  gameState.currentStage++;
   gameState.balls = [];
   gameState.bouncePads = [];
   gameState.bouncePadLevel = 1;
@@ -647,13 +841,19 @@ const gameState = {
   particles: [],
   currentStage: 0,
   spawnLevel: 1,
-  running: true
+  running: true,
+  mode: 'personal',      // 'personal' | 'challenge'
+  difficulty: 0,         // 0-3
+  diffMultiplier: 1.0,   // 难度倍数
+  computer: null,         // 挑战模式下的电脑状态
+  challengeWinner: null   // 'player' | 'computer' | null
 };
 
 // ==================== 持久缓存 ====================
 const SAVE_KEY = 'ball_merge_save_v1';
 
 function saveGame() {
+  if (gameState.mode === 'challenge') return; // 挑战模式不保存
   try {
     const data = {
       coins: gameState.coins,
@@ -724,6 +924,44 @@ function getHighestLevel() {
   let max = 0;
   for (const b of gameState.balls) { if (b.level > max) max = b.level; }
   return max;
+}
+function getCoinMultiplier() { return 1 + getHighestLevel() * 0.1; }
+function getCoinMultiplierFor(state) { return 1 + getHighestLevelFor(state) * 0.1; }
+function getHighestLevelFor(state) {
+  if (!state || state.balls.length === 0) return 1;
+  let max = 0;
+  for (const b of state.balls) { if (b.level > max) max = b.level; }
+  return max;
+}
+function addCoinsToComputer(amt) {
+  if (!gameState.computer) return;
+  gameState.computer.coins += Math.floor(amt * gameState.diffMultiplier);
+}
+
+// 挑战模式粒子：根据isPlayer决定存入哪个粒子数组
+function spawnHalfParticles(x, y, color, count, isPlayer) {
+  const target = isPlayer ? gameState.particles : (gameState.computer ? gameState.computer.particles : null);
+  if (!target) return;
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const s = 1 + Math.random() * 3;
+    target.push({
+      x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s,
+      life: 1, decay: 0.025 + Math.random() * 0.04,
+      color, size: 2 + Math.random() * 3
+    });
+  }
+}
+
+function updateComputerParticles() {
+  if (!gameState.computer) return;
+  const ps = gameState.computer.particles;
+  for (let i = ps.length - 1; i >= 0; i--) {
+    const p = ps[i];
+    p.x += p.vx; p.y += p.vy; p.vy += 0.05;
+    p.life -= p.decay;
+    if (p.life <= 0) ps.splice(i, 1);
+  }
 }
 
 function formatGold(n) {
@@ -1095,6 +1333,208 @@ function upgradeAllBouncePadsMax() {
   }
 }
 
+// ==================== 电脑AI辅助函数 ====================
+function computerGetValidSpawnPoint() {
+  const cs = gameState.computer;
+  if (!cs) return { x: HALF_W + 200, y: CANVAS_H / 2 };
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const x = HALF_W + 75 + Math.random() * 250;
+    const y = 80 + Math.random() * 380;
+    if (halfMaskAlpha(Math.floor(x - HALF_W), Math.floor(y), computerMaskImageData)) {
+      return { x, y };
+    }
+  }
+  return { x: HALF_W + 200, y: CANVAS_H / 2 };
+}
+
+function computerGetDefaultPadPosition() {
+  const cs = gameState.computer;
+  if (!cs) return { x: HALF_W + 200, y: CANVAS_H / 2 };
+  let best = null;
+  for (const p of cs.bouncePads) {
+    if (!best || p.y > best.y) best = p;
+  }
+  if (best) return { x: best.x, y: best.y - 30 };
+  return { x: HALF_W + 200, y: CANVAS_H / 2 };
+}
+
+function computerSpawnBall() {
+  const cs = gameState.computer;
+  if (!cs || cs.balls.length >= MAX_BALLS) return;
+  const sl = cs.spawnLevel;
+  const cost = (cs.balls.length + 1) * 4 * sl * sl;
+  if (cs.coins < cost) return;
+  cs.coins -= cost;
+  const sp = computerGetValidSpawnPoint();
+  cs.balls.push({
+    x: sp.x, y: sp.y,
+    vx: (Math.random() - 0.5) * 5, vy: 1,
+    radius: 14, level: sl,
+    color: getBallColor(sl), isActive: true
+  });
+}
+
+function computerMergeBalls() {
+  const cs = gameState.computer;
+  if (!cs) return;
+  const lc = {};
+  cs.balls.forEach(b => lc[b.level] = (lc[b.level] || 0) + 1);
+  let highest = -1;
+  for (const [lv, count] of Object.entries(lc)) {
+    if (count >= 2) { const lvNum = Number(lv); if (lvNum > highest) highest = lvNum; }
+  }
+  if (highest === -1) return;
+  const cost = getMergeCost(highest);
+  if (cs.coins < cost) return;
+  const sameLevel = cs.balls.filter(b => b.level === highest);
+  if (sameLevel.length < 2) return;
+  const [b1, b2] = sameLevel;
+  const midX = (b1.x + b2.x) / 2, midY = (b1.y + b2.y) / 2;
+  cs.coins -= cost;
+  cs.balls = cs.balls.filter(b => b !== b1 && b !== b2);
+  const nl = highest + 1;
+  const sp = halfMaskAlpha(Math.floor(midX - HALF_W), Math.floor(midY), computerMaskImageData) ? { x: midX, y: midY } : computerGetValidSpawnPoint();
+  cs.balls.push({
+    x: sp.x, y: sp.y,
+    vx: (Math.random() - 0.5) * 5, vy: -3,
+    radius: 14, level: nl,
+    color: getBallColor(nl), isActive: true
+  });
+  spawnHalfParticles(sp.x, sp.y, getBallColor(nl), 15, false);
+}
+
+function computerUpgradeSpawn() {
+  const cs = gameState.computer;
+  if (!cs) return;
+  const curLv = cs.spawnLevel;
+  const cost = curLv * curLv * 100000;
+  if (cs.coins < cost) return;
+  cs.coins -= cost;
+  cs.spawnLevel++;
+  const before = cs.balls.length;
+  const remaining = cs.balls.filter(b => b.level >= cs.spawnLevel);
+  const cleaned = cs.balls.filter(b => b.level < cs.spawnLevel);
+  const sl = cs.spawnLevel;
+  const spawnCost = (remaining.length + 1) * 4 * sl * sl;
+  if (remaining.length < 3 && cs.coins < spawnCost) {
+    cleaned.sort((a, b) => b.level - a.level);
+    const keepCount = Math.min(3 - remaining.length, cleaned.length);
+    cs.balls = [...remaining, ...cleaned.slice(0, keepCount)];
+  } else {
+    cs.balls = remaining;
+  }
+}
+
+function computerUpgradePads() {
+  const cs = gameState.computer;
+  if (!cs || !cs.bouncePads.every(p => p.unlocked)) return;
+  if (cs.bouncePadLevel >= 10000) return;
+  const cost = getUpgradeCost(cs.bouncePadLevel);
+  if (cs.coins < cost) return;
+  cs.coins -= cost;
+  cs.bouncePadLevel++;
+}
+
+function computerBuyPad() {
+  const cs = gameState.computer;
+  if (!cs) return;
+  let nextIdx = -1;
+  for (let i = 1; i < cs.bouncePads.length; i++) {
+    if (!cs.bouncePads.find(p => p.id === i) || !cs.bouncePads.find(p => p.id === i).unlocked) {
+      nextIdx = i; break;
+    }
+  }
+  if (nextIdx === -1) return;
+  const cost = getUnlockCost(nextIdx);
+  if (cs.coins < cost) return;
+  cs.coins -= cost;
+  const pad = cs.bouncePads.find(p => p.id === nextIdx);
+  if (pad) pad.unlocked = true;
+}
+
+function hasMergeableBalls(cs) {
+  const lc = {};
+  cs.balls.forEach(b => lc[b.level] = (lc[b.level] || 0) + 1);
+  for (const count of Object.values(lc)) { if (count >= 2) return true; }
+  return false;
+}
+
+function getSpawnUpgradeCost(lv) { return lv * lv * 100000; }
+function getSpawnCostForState(state) {
+  const sl = state.spawnLevel;
+  return (state.balls.length + 1) * 4 * sl * sl;
+}
+function getPadCostForState(state) {
+  for (let i = 1; i < state.bouncePads.length; i++) {
+    const pad = state.bouncePads.find(p => p.id === i);
+    if (!pad || !pad.unlocked) return getUnlockCost(i);
+  }
+  return Infinity;
+}
+function hasLockedPads(state) {
+  for (let i = 1; i < state.bouncePads.length; i++) {
+    const pad = state.bouncePads.find(p => p.id === i);
+    if (pad && !pad.unlocked) return true;
+  }
+  return false;
+}
+function canUpgradePads(state) {
+  return state.bouncePads.every(p => p.unlocked) && state.bouncePadLevel < 10000;
+}
+
+// ==================== 电脑AI主循环 ====================
+let computerAIInterval = null;
+
+function startComputerAI() {
+  if (computerAIInterval) clearInterval(computerAIInterval);
+  computerAIInterval = setInterval(computerAI, 1500);
+}
+
+function stopComputerAI() {
+  if (computerAIInterval) { clearInterval(computerAIInterval); computerAIInterval = null; }
+}
+
+function computerAI() {
+  const cs = gameState.computer;
+  if (!cs || gameState.challengeWinner) return;
+
+  // 1. 如果有可合成的球，尝试合成
+  if (hasMergeableBalls(cs)) {
+    const lc = {};
+    cs.balls.forEach(b => lc[b.level] = (lc[b.level] || 0) + 1);
+    let highestPair = -1;
+    for (const [lv, count] of Object.entries(lc)) {
+      if (count >= 2) { const n = Number(lv); if (n > highestPair) highestPair = n; }
+    }
+    if (highestPair >= 0) {
+      const mergeCost = getMergeCost(highestPair);
+      if (cs.coins >= mergeCost) { computerMergeBalls(); return; }
+    }
+  }
+
+  // 2. 如果金币 >= 升级招募等级费用，升级
+  const spawnUpCost = getSpawnUpgradeCost(cs.spawnLevel);
+  if (cs.coins >= spawnUpCost) { computerUpgradeSpawn(); return; }
+
+  // 3. 如果有未解锁的弹跳板且金币足够，购买
+  if (hasLockedPads(cs)) {
+    const padCost = getPadCostForState(cs);
+    if (cs.coins >= padCost) { computerBuyPad(); return; }
+  }
+
+  // 4. 如果有空闲空间，招募球
+  if (cs.balls.length < MAX_BALLS) {
+    const spawnC = getSpawnCostForState(cs);
+    if (cs.coins >= spawnC) { computerSpawnBall(); return; }
+  }
+
+  // 5. 如果可以升级弹跳板，升级
+  if (canUpgradePads(cs)) {
+    const upgCost = getUpgradeCost(cs.bouncePadLevel);
+    if (cs.coins >= upgCost) { computerUpgradePads(); return; }
+  }
+}
+
 // ==================== 曲线碰撞检测 [基础关] ====================
 function segmentToBall(sx, sy, ex, ey, bx, by, r) {
   const dx = ex - sx, dy = ey - sy;
@@ -1139,7 +1579,7 @@ function resolveCurveCollision(ball) {
           const segT = (i + result.t) / CURVE_SAMPLES;
           const pad = getPadForT(segT);
           if (pad && pad.unlocked) {
-            const reward = getWallCoinReward(ball.level) * gameState.bouncePadLevel * getHighestLevel();
+            const reward = getWallCoinReward(ball.level) * gameState.bouncePadLevel * getCoinMultiplier();
             addCoins(reward);
             spawnParticles(result.cx, result.cy, getPadColor(gameState.bouncePadLevel), 5);
           }
@@ -1162,7 +1602,7 @@ function checkWallCollision(ball) {
         if (pad.type === 'wall' && pad.side === 'left' && pad.unlocked &&
             ball.y >= pad.yStart && ball.y <= pad.yEnd) {
           ball._wallRewarded = true;
-          const reward = getWallCoinReward(ball.level) * gameState.bouncePadLevel * getHighestLevel();
+          const reward = getWallCoinReward(ball.level) * gameState.bouncePadLevel * getCoinMultiplier();
           addCoins(reward);
           spawnParticles(LEFT_X, ball.y, getPadColor(gameState.bouncePadLevel), 5);
           break;
@@ -1179,7 +1619,7 @@ function checkWallCollision(ball) {
           ball.y >= pad.yStart && ball.y <= pad.yEnd) {
         if (!ball._wallRewarded) {
           ball._wallRewarded = true;
-          const reward = getWallCoinReward(ball.level) * gameState.bouncePadLevel * getHighestLevel();
+          const reward = getWallCoinReward(ball.level) * gameState.bouncePadLevel * getCoinMultiplier();
           addCoins(reward);
           spawnParticles(RIGHT_X, ball.y, getPadColor(gameState.bouncePadLevel), 5);
         }
@@ -1241,6 +1681,11 @@ function checkOutOfBounds(ball) {
 
 // ==================== 物理更新 ====================
 function updatePhysics() {
+  if (gameState.mode === 'challenge' && gameState.computer) {
+    updateChallengePhysics();
+    return;
+  }
+  // 个人模式物理（不变）
   for (const ball of gameState.balls) {
     if (!ball.isActive) continue;
     ball.vy += GRAVITY;
@@ -1261,7 +1706,142 @@ function updatePhysics() {
       resolveLetterCollision(ball);
     }
   }
+
+  // 小球间碰撞
+  const balls = gameState.balls;
+  for (let i = 0; i < balls.length; i++) {
+    const a = balls[i];
+    if (!a.isActive) continue;
+    for (let j = i + 1; j < balls.length; j++) {
+      const b = balls[j];
+      if (!b.isActive) continue;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const minDist = a.radius + b.radius;
+      if (dist < minDist && dist > 0.001) {
+        const overlap = minDist - dist;
+        const nx = dx / dist;
+        const ny = dy / dist;
+        a.x -= nx * overlap / 2;
+        a.y -= ny * overlap / 2;
+        b.x += nx * overlap / 2;
+        b.y += ny * overlap / 2;
+        const dvx = a.vx - b.vx;
+        const dvy = a.vy - b.vy;
+        const dvDotN = dvx * nx + dvy * ny;
+        if (dvDotN > 0) {
+          a.vx -= dvDotN * nx;
+          a.vy -= dvDotN * ny;
+          b.vx += dvDotN * nx;
+          b.vy += dvDotN * ny;
+        }
+      }
+    }
+  }
+
   updateParticles();
+}
+
+// 挑战模式：分别更新玩家和电脑物理
+function updateChallengePhysics() {
+  const cs = gameState.computer;
+  if (!cs) return;
+
+  // ========== 玩家物理（左半区 0-400）==========
+  for (const ball of gameState.balls) {
+    if (!ball.isActive) continue;
+    ball.vy += GRAVITY;
+    ball.x += ball.vx;
+    ball.y += ball.vy;
+    ball._letterRewarded = false;
+
+    // 玩家球边界约束：限制在左半区0-400
+    if (ball.x - ball.radius < 0) { ball.x = ball.radius; ball.vx = Math.abs(ball.vx) * BOUNCE_DAMPING; }
+    if (ball.x + ball.radius > HALF_W - 2) { ball.x = HALF_W - 2 - ball.radius; ball.vx = -Math.abs(ball.vx) * BOUNCE_DAMPING; }
+    if (ball.y - ball.radius < 0) { ball.y = ball.radius; ball.vy = Math.abs(ball.vy) * BOUNCE_DAMPING; }
+    if (ball.y + ball.radius > CANVAS_H) { ball.y = CANVAS_H - ball.radius; ball.vy = -Math.abs(ball.vy) * BOUNCE_DAMPING; }
+
+    resolveHalfLetterCollision(ball, gameState.bouncePads, gameState.bouncePadLevel, gameState, true);
+  }
+
+  // 玩家球间碰撞
+  const pBalls = gameState.balls;
+  for (let i = 0; i < pBalls.length; i++) {
+    const a = pBalls[i];
+    if (!a.isActive) continue;
+    for (let j = i + 1; j < pBalls.length; j++) {
+      const b = pBalls[j];
+      if (!b.isActive) continue;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const minDist = a.radius + b.radius;
+      if (dist < minDist && dist > 0.001) {
+        const overlap = minDist - dist;
+        const nx = dx / dist;
+        const ny = dy / dist;
+        a.x -= nx * overlap / 2; a.y -= ny * overlap / 2;
+        b.x += nx * overlap / 2; b.y += ny * overlap / 2;
+        const dvx = a.vx - b.vx;
+        const dvy = a.vy - b.vy;
+        const dvDotN = dvx * nx + dvy * ny;
+        if (dvDotN > 0) {
+          a.vx -= dvDotN * nx; a.vy -= dvDotN * ny;
+          b.vx += dvDotN * nx; b.vy += dvDotN * ny;
+        }
+      }
+    }
+  }
+
+  // ========== 电脑物理（右半区 400-800）==========
+  for (const ball of cs.balls) {
+    if (!ball.isActive) continue;
+    ball.vy += GRAVITY;
+    ball.x += ball.vx;
+    ball.y += ball.vy;
+    ball._letterRewarded = false;
+
+    // 电脑球边界约束：限制在右半区400-800
+    if (ball.x - ball.radius < HALF_W + 2) { ball.x = HALF_W + 2 + ball.radius; ball.vx = Math.abs(ball.vx) * BOUNCE_DAMPING; }
+    if (ball.x + ball.radius > CANVAS_W) { ball.x = CANVAS_W - ball.radius; ball.vx = -Math.abs(ball.vx) * BOUNCE_DAMPING; }
+    if (ball.y - ball.radius < 0) { ball.y = ball.radius; ball.vy = Math.abs(ball.vy) * BOUNCE_DAMPING; }
+    if (ball.y + ball.radius > CANVAS_H) { ball.y = CANVAS_H - ball.radius; ball.vy = -Math.abs(ball.vy) * BOUNCE_DAMPING; }
+
+    resolveHalfLetterCollision(ball, cs.bouncePads, cs.bouncePadLevel, cs, false);
+  }
+
+  // 电脑球间碰撞
+  const cBalls = cs.balls;
+  for (let i = 0; i < cBalls.length; i++) {
+    const a = cBalls[i];
+    if (!a.isActive) continue;
+    for (let j = i + 1; j < cBalls.length; j++) {
+      const b = cBalls[j];
+      if (!b.isActive) continue;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const minDist = a.radius + b.radius;
+      if (dist < minDist && dist > 0.001) {
+        const overlap = minDist - dist;
+        const nx = dx / dist;
+        const ny = dy / dist;
+        a.x -= nx * overlap / 2; a.y -= ny * overlap / 2;
+        b.x += nx * overlap / 2; b.y += ny * overlap / 2;
+        const dvx = a.vx - b.vx;
+        const dvy = a.vy - b.vy;
+        const dvDotN = dvx * nx + dvy * ny;
+        if (dvDotN > 0) {
+          a.vx -= dvDotN * nx; a.vy -= dvDotN * ny;
+          b.vx += dvDotN * nx; b.vy += dvDotN * ny;
+        }
+      }
+    }
+  }
+
+  updateParticles();
+  updateComputerParticles();
 }
 
 // ==================== 渲染 ====================
@@ -1280,9 +1860,13 @@ function render() {
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(CANVAS_W, y); ctx.stroke();
   }
 
+  if (gameState.mode === 'challenge' && gameState.computer) {
+    renderChallenge();
+    return;
+  }
+
   if (gameState.currentStage === 0) {
     // ===== 基础关渲染：U型墙面 =====
-    // 底部曲线弹跳板
     for (const pad of gameState.bouncePads) {
       if (pad.type !== 'curve') continue;
       const color = pad.unlocked ? getPadColor(gameState.bouncePadLevel) : '#333';
@@ -1353,15 +1937,12 @@ function render() {
   } else {
     // ===== 字母关卡渲染：字母轮廓 =====
     const letter = getStageName(gameState.currentStage);
-
-    // 字母半透明填充
     ctx.fillStyle = 'rgba(255,255,255,0.05)';
     ctx.font = LETTER_FONT_VISUAL;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(letter, CANVAS_W / 2, CANVAS_H / 2 + 10);
 
-    // 字母发光轮廓
     ctx.save();
     ctx.shadowColor = 'rgba(100,180,255,0.5)';
     ctx.shadowBlur = 16;
@@ -1370,21 +1951,17 @@ function render() {
     ctx.strokeText(letter, CANVAS_W / 2, CANVAS_H / 2 + 10);
     ctx.restore();
 
-    // 字母外圈描边
     ctx.strokeStyle = 'rgba(255,255,255,0.3)';
     ctx.lineWidth = 2;
     ctx.strokeText(letter, CANVAS_W / 2, CANVAS_H / 2 + 10);
 
-    // 字母关卡弹跳板渲染（小光点）
     for (const pad of gameState.bouncePads) {
       if (pad.type !== 'letter') continue;
       const color = pad.unlocked ? getPadColor(gameState.bouncePadLevel) : '#333';
-      // 外圈光晕
       ctx.fillStyle = pad.unlocked ? color : '#333';
       ctx.globalAlpha = pad.unlocked ? 0.35 : 0.5;
       ctx.beginPath(); ctx.arc(pad.x, pad.y, 12, 0, Math.PI * 2); ctx.fill();
       ctx.globalAlpha = 1;
-      // 核心
       ctx.fillStyle = color;
       ctx.beginPath(); ctx.arc(pad.x, pad.y, 5, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = 'rgba(255,255,255,0.4)';
@@ -1449,12 +2026,237 @@ function render() {
 
   ctx.fillStyle = '#ffaa44';
   ctx.font = '10px "Microsoft YaHei", Arial';
-  ctx.fillText('(所得金币×' + getHighestLevel() + ')', 22, 94);
+  ctx.fillText('(所得金币×' + getCoinMultiplier().toFixed(1) + ')', 22, 94);
 
   ctx.fillStyle = '#66ccff';
   ctx.font = '11px "Microsoft YaHei", Arial';
-  const nextName = gameState.currentStage >= 26 ? '全部通关！' : ('→ 100级进入' + getStageFullName(gameState.currentStage + 1));
+  const nextName = gameState.currentStage >= 26 ? '→ 100级循环回第0关' : ('→ 100级进入' + getStageFullName(gameState.currentStage + 1));
   ctx.fillText(nextName, 22, 112);
+}
+
+// 挑战模式渲染
+function renderChallenge() {
+  const cs = gameState.computer;
+  const letter = getStageName(gameState.currentStage);
+
+  // ===== 左半区：玩家字母 =====
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0, 0, HALF_W, CANVAS_H); ctx.clip();
+
+  // 字母半透明填充
+  ctx.fillStyle = 'rgba(255,255,255,0.05)';
+  ctx.font = LETTER_FONT_VISUAL;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(letter, HALF_W / 2, CANVAS_H / 2 + 10);
+
+  // 字母发光轮廓
+  ctx.save();
+  ctx.shadowColor = 'rgba(100,180,255,0.5)';
+  ctx.shadowBlur = 16;
+  ctx.strokeStyle = 'rgba(100,180,255,0.6)';
+  ctx.lineWidth = 4;
+  ctx.strokeText(letter, HALF_W / 2, CANVAS_H / 2 + 10);
+  ctx.restore();
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+  ctx.lineWidth = 2;
+  ctx.strokeText(letter, HALF_W / 2, CANVAS_H / 2 + 10);
+
+  // 玩家弹跳板
+  for (const pad of gameState.bouncePads) {
+    if (pad.type !== 'letter') continue;
+    const color = pad.unlocked ? getPadColor(gameState.bouncePadLevel) : '#333';
+    ctx.fillStyle = pad.unlocked ? color : '#333';
+    ctx.globalAlpha = pad.unlocked ? 0.35 : 0.5;
+    ctx.beginPath(); ctx.arc(pad.x, pad.y, 12, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(pad.x, pad.y, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(pad.x, pad.y, 5, 0, Math.PI * 2); ctx.stroke();
+  }
+
+  // 玩家粒子
+  for (const p of gameState.particles) {
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // 玩家小球
+  for (const ball of gameState.balls) {
+    ctx.shadowColor = ball.color;
+    ctx.shadowBlur = 10;
+    const grad = ctx.createRadialGradient(ball.x - 3, ball.y - 3, 2, ball.x, ball.y, ball.radius);
+    grad.addColorStop(0, '#ffffff');
+    grad.addColorStop(0.4, ball.color);
+    grad.addColorStop(1, '#000000');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2); ctx.stroke();
+
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 10px "Microsoft YaHei", Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Lv.' + ball.level, ball.x, ball.y);
+  }
+  ctx.restore();
+
+  // ===== 右半区：电脑字母 =====
+  ctx.save();
+  ctx.beginPath(); ctx.rect(HALF_W, 0, HALF_W, CANVAS_H); ctx.clip();
+
+  ctx.fillStyle = 'rgba(255,100,100,0.05)';
+  ctx.font = LETTER_FONT_VISUAL;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(letter, HALF_W + HALF_W / 2, CANVAS_H / 2 + 10);
+
+  ctx.save();
+  ctx.shadowColor = 'rgba(255,100,100,0.5)';
+  ctx.shadowBlur = 16;
+  ctx.strokeStyle = 'rgba(255,100,100,0.6)';
+  ctx.lineWidth = 4;
+  ctx.strokeText(letter, HALF_W + HALF_W / 2, CANVAS_H / 2 + 10);
+  ctx.restore();
+
+  ctx.strokeStyle = 'rgba(255,200,200,0.3)';
+  ctx.lineWidth = 2;
+  ctx.strokeText(letter, HALF_W + HALF_W / 2, CANVAS_H / 2 + 10);
+
+  // 电脑弹跳板
+  for (const pad of cs.bouncePads) {
+    if (pad.type !== 'letter') continue;
+    const color = pad.unlocked ? getPadColor(cs.bouncePadLevel) : '#333';
+    ctx.fillStyle = pad.unlocked ? color : '#333';
+    ctx.globalAlpha = pad.unlocked ? 0.35 : 0.5;
+    ctx.beginPath(); ctx.arc(pad.x, pad.y, 12, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(pad.x, pad.y, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(pad.x, pad.y, 5, 0, Math.PI * 2); ctx.stroke();
+  }
+
+  // 电脑粒子
+  for (const p of cs.particles) {
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // 电脑小球
+  for (const ball of cs.balls) {
+    ctx.shadowColor = ball.color;
+    ctx.shadowBlur = 10;
+    const grad = ctx.createRadialGradient(ball.x - 3, ball.y - 3, 2, ball.x, ball.y, ball.radius);
+    grad.addColorStop(0, '#ffffff');
+    grad.addColorStop(0.4, ball.color);
+    grad.addColorStop(1, '#000000');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2); ctx.stroke();
+
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 10px "Microsoft YaHei", Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Lv.' + ball.level, ball.x, ball.y);
+  }
+  ctx.restore();
+
+  // ===== 中间分割线 =====
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([8, 8]);
+  ctx.beginPath(); ctx.moveTo(HALF_W, 0); ctx.lineTo(HALF_W, CANVAS_H); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // ===== 左上角：玩家面板 =====
+  let pHighest = 0;
+  for (const b of gameState.balls) { if (b.level > pHighest) pHighest = b.level; }
+
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+  ctx.lineWidth = 1;
+  roundRect(12, 8, 198, 118, 6);
+
+  ctx.fillStyle = '#3399ff';
+  ctx.font = 'bold 13px "Microsoft YaHei", Arial';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('玩家 第' + gameState.currentStage + '关 ' + letter, 22, 10);
+
+  ctx.fillStyle = '#ffd700';
+  ctx.font = 'bold 13px "Microsoft YaHei", Arial';
+  ctx.fillText('金币: ' + formatGold(gameState.coins), 22, 30);
+
+  ctx.fillStyle = '#aaa';
+  ctx.font = '11px "Microsoft YaHei", Arial';
+  ctx.fillText('小球: ' + gameState.balls.length + '/' + MAX_BALLS, 22, 48);
+
+  ctx.fillStyle = '#ff8800';
+  ctx.font = 'bold 11px "Microsoft YaHei", Arial';
+  ctx.fillText('最高: Lv.' + pHighest, 22, 64);
+
+  ctx.fillStyle = '#ffaa44';
+  ctx.font = '10px "Microsoft YaHei", Arial';
+  ctx.fillText('(所得金币×' + getCoinMultiplier().toFixed(1) + ')', 22, 78);
+
+  ctx.fillStyle = '#66ccff';
+  ctx.font = '10px "Microsoft YaHei", Arial';
+  ctx.fillText('弹跳板: Lv.' + gameState.bouncePadLevel, 22, 94);
+
+  // ===== 右上角：电脑面板 =====
+  let cHighest = 0;
+  for (const b of cs.balls) { if (b.level > cHighest) cHighest = b.level; }
+
+  const panelW = 195;
+  const panelX = CANVAS_W - panelW - 12;
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+  ctx.lineWidth = 1;
+  roundRect(panelX, 8, panelW, 118, 6);
+
+  ctx.fillStyle = '#ff6633';
+  ctx.font = 'bold 13px "Microsoft YaHei", Arial';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('电脑 第' + gameState.currentStage + '关 ' + letter, panelX + 10, 10);
+
+  ctx.fillStyle = '#ffd700';
+  ctx.font = 'bold 13px "Microsoft YaHei", Arial';
+  ctx.fillText('金币: ' + formatGold(cs.coins), panelX + 10, 30);
+
+  ctx.fillStyle = '#aaa';
+  ctx.font = '11px "Microsoft YaHei", Arial';
+  ctx.fillText('小球: ' + cs.balls.length + '/' + MAX_BALLS, panelX + 10, 48);
+
+  ctx.fillStyle = '#ff8800';
+  ctx.font = 'bold 11px "Microsoft YaHei", Arial';
+  ctx.fillText('最高: Lv.' + cHighest, panelX + 10, 64);
+
+  ctx.fillStyle = '#ffaa44';
+  ctx.font = '10px "Microsoft YaHei", Arial';
+  ctx.fillText('(所得金币×' + gameState.diffMultiplier.toFixed(1) + ')', panelX + 10, 78);
+
+  ctx.fillStyle = '#66ccff';
+  ctx.font = '10px "Microsoft YaHei", Arial';
+  ctx.fillText('弹跳板: Lv.' + cs.bouncePadLevel, panelX + 10, 94);
 }
 
 function roundRect(x, y, w, h, r) {
@@ -1606,10 +2408,34 @@ function gameLoop() {
   if (!gameState.running) return;
   updatePhysics();
 
-  for (const ball of gameState.balls) {
-    if (ball.level >= 100) {
-      nextStage();
-      break;
+  if (gameState.mode === 'challenge' && gameState.computer) {
+    // 挑战模式：检测胜利条件
+    if (!gameState.challengeWinner) {
+      for (const ball of gameState.balls) {
+        if (ball.level >= 100) { gameState.challengeWinner = 'player'; break; }
+      }
+      if (!gameState.challengeWinner) {
+        for (const ball of gameState.computer.balls) {
+          if (ball.level >= 100) { gameState.challengeWinner = 'computer'; break; }
+        }
+      }
+      if (gameState.challengeWinner) {
+        stopComputerAI();
+        if (gameState.challengeWinner === 'player') {
+          showToast('🏆 玩家胜利！率先达到 Lv.100！', 'success');
+        } else {
+          showToast('💀 电脑胜利！电脑率先达到 Lv.100！', 'error');
+        }
+        gameState.running = false;
+      }
+    }
+  } else {
+    // 个人模式：100级通关
+    for (const ball of gameState.balls) {
+      if (ball.level >= 100) {
+        nextStage();
+        break;
+      }
     }
   }
 
@@ -1620,23 +2446,197 @@ function gameLoop() {
   saveTimer++;
   if (saveTimer >= 600) {
     saveTimer = 0;
-    saveGame();
+    if (gameState.mode === 'personal') saveGame();
   }
   requestAnimationFrame(gameLoop);
 }
-window.addEventListener('beforeunload', () => saveGame());
+window.addEventListener('beforeunload', () => {
+  if (gameState.mode === 'personal') saveGame();
+});
 
-// ==================== 启动 ====================
-function startGame() {
-  const loaded = loadGame();
-  if (loaded) {
-    if (gameState.currentStage === 0) {
-      initBouncePads();
+// ==================== 挑战模式初始化 ====================
+function initChallengeMode(stage, diff) {
+  const diffMultipliers = [1.0, 1.1, 1.2, 1.5];
+  gameState.mode = 'challenge';
+  gameState.difficulty = diff;
+  gameState.diffMultiplier = diffMultipliers[diff] || 1.0;
+  gameState.currentStage = stage;
+  gameState.challengeWinner = null;
+
+  // 电脑状态
+  gameState.computer = {
+    balls: [],
+    bouncePads: [],
+    particles: [],
+    coins: 0,
+    bouncePadLevel: 1,
+    spawnLevel: 1,
+    currentStage: stage
+  };
+
+  const letter = getStageName(stage);
+
+  // 初始化玩家字母遮罩（左半区）
+  updateHalfLetterMask(letter, true);
+
+  // 初始化玩家弹跳板（基于半区遮罩，从0-400范围找）
+  initChallengeBouncePads(true);
+
+  // 初始化电脑字母遮罩（右半区）
+  updateHalfLetterMask(letter, false);
+
+  // 初始化电脑弹跳板（基于半区遮罩，偏移+400）
+  initChallengeBouncePads(false);
+
+  // 玩家初始球
+  const pSp = getDefaultPadPositionChallenge(true);
+  for (let i = 0; i < 3; i++) {
+    gameState.balls.push({
+      x: pSp.x + (Math.random() - 0.5) * 40,
+      y: pSp.y + (Math.random() - 0.5) * 20,
+      vx: (Math.random() - 0.5) * 5, vy: i === 0 ? 1 : -1,
+      radius: 14, level: 1,
+      color: getBallColor(1), isActive: true
+    });
+  }
+
+  // 电脑初始球
+  const cSp = getDefaultPadPositionChallenge(false);
+  for (let i = 0; i < 3; i++) {
+    gameState.computer.balls.push({
+      x: cSp.x + (Math.random() - 0.5) * 40,
+      y: cSp.y + (Math.random() - 0.5) * 20,
+      vx: (Math.random() - 0.5) * 5, vy: i === 0 ? 1 : -1,
+      radius: 14, level: 1,
+      color: getBallColor(1), isActive: true
+    });
+  }
+
+  // 电脑初始金币（给点起步资金）
+  gameState.computer.coins = 100;
+}
+
+// 挑战模式弹跳板初始化
+function initChallengeBouncePads(isPlayer) {
+  const target = isPlayer ? gameState : gameState.computer;
+  const imageData = isPlayer ? playerMaskImageData : computerMaskImageData;
+  if (!imageData) return;
+
+  // 在半区上找字母轮廓点
+  const boundaryPoints = [];
+  const step = 3;
+  for (let x = 4; x < HALF_W - 4; x += step) {
+    for (let y = 4; y < CANVAS_H - 4; y++) {
+      if (halfMaskAlpha(x, y, imageData)) { boundaryPoints.push({ x, y, region: 'top' }); break; }
     }
-    showToast('游戏已恢复（第' + gameState.currentStage + '关）', 'info');
-  } else {
-    initBouncePads();
-    if (gameState.currentStage === 0) {
+    for (let y = CANVAS_H - 5; y >= 4; y--) {
+      if (halfMaskAlpha(x, y, imageData)) { boundaryPoints.push({ x, y, region: 'bottom' }); break; }
+    }
+  }
+  for (let y = 4; y < CANVAS_H - 4; y += step) {
+    for (let x = 4; x < HALF_W - 4; x++) {
+      if (halfMaskAlpha(x, y, imageData)) { boundaryPoints.push({ x, y, region: 'left' }); break; }
+    }
+    for (let x = HALF_W - 5; x >= 4; x--) {
+      if (halfMaskAlpha(x, y, imageData)) { boundaryPoints.push({ x, y, region: 'right' }); break; }
+    }
+  }
+
+  if (boundaryPoints.length === 0) {
+    target.bouncePads = [];
+    return;
+  }
+
+  let cx = 0, cy = 0;
+  for (const p of boundaryPoints) { cx += p.x; cy += p.y; }
+  cx /= boundaryPoints.length; cy /= boundaryPoints.length;
+  boundaryPoints.sort((a, b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx));
+
+  const pads = [];
+  const n = 9;
+  for (let i = 0; i < n; i++) {
+    const idx = Math.floor((i / n) * boundaryPoints.length);
+    const pt = boundaryPoints[idx];
+    pads.push({ x: pt.x, y: pt.y, region: pt.region });
+  }
+
+  // 找顶部最中心点作为默认弹跳板
+  let bestTop = null, bestTopDist = Infinity;
+  for (const bp of boundaryPoints) {
+    if (bp.region === 'top') {
+      const d = Math.abs(bp.x - HALF_W / 2);
+      if (d < bestTopDist) { bestTopDist = d; bestTop = bp; }
+    }
+  }
+  if (bestTop) pads[0] = { x: bestTop.x, y: bestTop.y, region: 'top' };
+
+  // 按y降序排列
+  pads.sort((a, b) => b.y - a.y);
+
+  // 电脑弹跳板需要x+400偏移（因为在右半区渲染）
+  const xOffset = isPlayer ? 0 : HALF_W;
+
+  target.bouncePads = pads.map((pt, i) => ({
+    id: i,
+    x: pt.x + xOffset,
+    y: pt.y,
+    unlocked: i === 0,
+    type: 'letter'
+  }));
+}
+
+function getDefaultPadPositionChallenge(isPlayer) {
+  const state = isPlayer ? gameState : gameState.computer;
+  let best = null;
+  for (const p of state.bouncePads) {
+    if (!best || p.y > best.y) best = p;
+  }
+  if (best) return { x: best.x, y: best.y - 30 };
+  return { x: (isPlayer ? 200 : 600), y: CANVAS_H / 2 };
+}
+
+// ==================== 模式选择面板 ====================
+let panelSelectedLetter = 'A';
+let panelSelectedDiff = '0';
+const panelLetters = [];
+for (let i = 0; i < 26; i++) panelLetters.push(String.fromCharCode(65 + i));
+const panelDiffNames = { '0': '普通', '1': '困难(+10%金币)', '2': '地狱(+20%金币)', '3': '自虐(+50%金币)' };
+
+function renderPanelLetters() {
+  const g = document.getElementById('letter-grid2');
+  let h = '';
+  panelLetters.forEach(l => {
+    h += `<button class="lt2${l === panelSelectedLetter ? ' active' : ''}" onclick="selLetter('${l}')">${l}</button>`;
+  });
+  g.innerHTML = h;
+}
+function renderPanelDiffs() {
+  const g = document.getElementById('diff-grid2');
+  let h = '';
+  Object.entries(panelDiffNames).forEach(([k, v]) => {
+    h += `<button class="df2 d${k}${k === panelSelectedDiff ? ' active' : ''}" onclick="selDiff('${k}')">${v}</button>`;
+  });
+  g.innerHTML = h;
+}
+function selLetter(l) { panelSelectedLetter = l; renderPanelLetters(); }
+function selDiff(d) { panelSelectedDiff = d; renderPanelDiffs(); }
+function showChallengePanel() {
+  document.getElementById('challenge-config').classList.add('show');
+  renderPanelLetters();
+  renderPanelDiffs();
+}
+function backToModeSelect() {
+  document.getElementById('challenge-config').classList.remove('show');
+}
+function selectMode(mode) {
+  document.getElementById('mode-overlay').classList.add('hidden');
+  if (mode === 'personal') {
+    const loaded = loadGame();
+    if (loaded) {
+      if (gameState.currentStage === 0 && gameState.bouncePads.length === 0) initBouncePads();
+      showToast('游戏已恢复（第' + gameState.currentStage + '关）', 'info');
+    } else {
+      initBouncePads();
       for (let i = 0; i < 2; i++) {
         gameState.balls.push({
           x: 370 + i * 60, y: 140,
@@ -1646,10 +2646,67 @@ function startGame() {
         });
       }
     }
+    updateUI();
+    gameState.running = true;
+    gameLoop();
   }
+}
+function startChallengeFromPanel() {
+  document.getElementById('mode-overlay').classList.add('hidden');
+  const stageIndex = panelLetters.indexOf(panelSelectedLetter) + 1;
+  const diff = parseInt(panelSelectedDiff);
+  initChallengeMode(stageIndex, diff);
   updateUI();
   gameState.running = true;
+  startComputerAI();
   gameLoop();
+  showToast('挑战模式：玩家 vs 电脑（难度' + diff + ' 倍数×' + gameState.diffMultiplier.toFixed(1) + '）', 'info');
+}
+
+// ==================== 启动 ====================
+function startGame() {
+  const params = new URLSearchParams(window.location.search);
+  const urlMode = params.get('mode');
+  const urlStage = parseInt(params.get('stage'));
+  const urlDiff = parseInt(params.get('diff'));
+
+  if (urlMode === 'challenge' && urlStage >= 1 && urlStage <= 26 && urlDiff >= 0 && urlDiff <= 3) {
+    // 有URL参数，直接启动挑战模式
+    document.getElementById('mode-overlay').classList.add('hidden');
+    initChallengeMode(urlStage, urlDiff);
+    updateUI();
+    gameState.running = true;
+    startComputerAI();
+    gameLoop();
+    showToast('挑战模式：玩家 vs 电脑（难度' + urlDiff + ' 倍数×' + gameState.diffMultiplier.toFixed(1) + '）', 'info');
+    return;
+  }
+
+  if (urlMode === 'personal') {
+    // 有URL参数，直接启动个人模式
+    document.getElementById('mode-overlay').classList.add('hidden');
+    const loaded = loadGame();
+    if (loaded) {
+      if (gameState.currentStage === 0 && gameState.bouncePads.length === 0) initBouncePads();
+      showToast('游戏已恢复（第' + gameState.currentStage + '关）', 'info');
+    } else {
+      initBouncePads();
+      for (let i = 0; i < 2; i++) {
+        gameState.balls.push({
+          x: 370 + i * 60, y: 140,
+          vx: (i === 0 ? 3 : -2.5), vy: 0.5,
+          radius: 14, level: 1,
+          color: getBallColor(1), isActive: true
+        });
+      }
+    }
+    updateUI();
+    gameState.running = true;
+    gameLoop();
+    return;
+  }
+
+  // 无URL参数：显示模式选择覆盖层（不做其他事）
 }
 startGame();
 </script>
