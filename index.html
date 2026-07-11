@@ -105,7 +105,7 @@
     align-items: center;
     justify-content: center;
     gap: 8px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
   }
   .btn-upgrade {
     background: linear-gradient(135deg, #9933FF, #7722CC);
@@ -129,6 +129,16 @@
   }
   .btn-spawn-upgrade.ready {
     background: linear-gradient(135deg, #ff6600, #ff4400);
+    color: white;
+  }
+  .btn-spawn-max-upgrade {
+    background: #333;
+    color: #888;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  .btn-spawn-max-upgrade.ready {
+    background: linear-gradient(135deg, #ff4400, #cc2200);
     color: white;
   }
   .btn-buy-pad { background: #333; color: #888; }
@@ -182,7 +192,7 @@
     }
 
     .btn-spawn, .btn-spawn-batch, .btn-merge-main, .btn-merge-all,
-    .btn-upgrade, .btn-buy-pad, .btn-spawn-upgrade, .btn-upgrade-all {
+    .btn-upgrade, .btn-buy-pad, .btn-spawn-upgrade, .btn-upgrade-all, .btn-spawn-max-upgrade {
       min-height: 38px;
       padding: 8px 10px;
       font-size: 12px;
@@ -226,7 +236,7 @@
     }
 
     .btn-spawn, .btn-spawn-batch, .btn-merge-main, .btn-merge-all,
-    .btn-upgrade, .btn-buy-pad, .btn-spawn-upgrade, .btn-upgrade-all {
+    .btn-upgrade, .btn-buy-pad, .btn-spawn-upgrade, .btn-upgrade-all, .btn-spawn-max-upgrade {
       padding: 7px 8px;
       font-size: 11px;
       min-height: 36px;
@@ -253,10 +263,11 @@
   <div id="bottom-bar">
     <div class="bottom-row">
       <button class="btn-spawn" id="btn-spawn" onclick="spawnBall()">招募小球</button>
-      <button class="btn-merge-main" id="btn-merge" onclick="doMerge()" disabled>合成</button>
       <button class="btn-spawn-upgrade" id="btn-spawn-upgrade" onclick="upgradeSpawnLevel()">招募小球升级</button>
+      <button class="btn-spawn-max-upgrade" id="btn-spawn-max-upgrade" onclick="upgradeSpawnLevelMax()">一键合成升级</button>
     </div>
     <div class="bottom-row">
+      <button class="btn-merge-main" id="btn-merge" onclick="doMerge()" disabled>合成</button>
       <button class="btn-spawn-batch locked" id="btn-spawn-batch" onclick="spawnBatch100()" disabled>招募100小球</button>
       <button class="btn-merge-all locked" id="btn-merge-all" onclick="mergeAll()" disabled>一键合成</button>
     </div>
@@ -599,10 +610,32 @@ function nextStage() {
   gameState.bouncePadLevel = 1;
   gameState.spawnLevel = 1;
   gameState.particles = [];
+  gameState.coins = 0;
   initBouncePads();
-  for (let i = 0; i < 3; i++) spawnBall();
+  // 在默认弹跳板位置生成3个1级小球
+  const sp = getDefaultPadPosition();
+  for (let i = 0; i < 3; i++) {
+    gameState.balls.push({
+      x: sp.x + (Math.random() - 0.5) * 40,
+      y: sp.y + (Math.random() - 0.5) * 20,
+      vx: (Math.random() - 0.5) * 5, vy: i === 0 ? 1 : -1,
+      radius: 14, level: 1,
+      color: getBallColor(1), isActive: true
+    });
+  }
   saveGame();
   showToast('进入 ' + getStageFullName(gameState.currentStage) + '！', 'success');
+}
+
+function getDefaultPadPosition() {
+  if (gameState.currentStage === 0) return { x: 370, y: WALL_TOP_Y - 40 };
+  // 字母关卡：找最下方的弹跳板作为默认位置
+  let best = null;
+  for (const p of gameState.bouncePads) {
+    if (!best || p.y > best.y) best = p;
+  }
+  if (best) return { x: best.x, y: best.y - 30 };
+  return { x: CANVAS_W / 2, y: CANVAS_H / 2 };
 }
 
 // ==================== 游戏状态 ====================
@@ -795,12 +828,56 @@ function upgradeSpawnLevel() {
   gameState.spawnLevel++;
   // 清理低于新招募等级的小球
   const before = gameState.balls.length;
-  gameState.balls = gameState.balls.filter(b => b.level >= gameState.spawnLevel);
-  const removed = before - gameState.balls.length;
-  if (removed > 0) {
-    showToast('已清理 ' + removed + ' 个低等级小球', 'info');
+  const remaining = gameState.balls.filter(b => b.level >= gameState.spawnLevel);
+  const cleaned = gameState.balls.filter(b => b.level < gameState.spawnLevel);
+  const sl = gameState.spawnLevel;
+  const spawnCost = (remaining.length + 1) * 4 * sl * sl;
+  // 金币不足购买一个球时，保留至少3个最高等级的清理球
+  if (remaining.length < 3 && gameState.coins < spawnCost) {
+    cleaned.sort((a, b) => b.level - a.level);
+    const keepCount = Math.min(3 - remaining.length, cleaned.length);
+    gameState.balls = [...remaining, ...cleaned.slice(0, keepCount)];
+    const removed = before - gameState.balls.length;
+    if (removed > 0) showToast('已清理 ' + removed + ' 个低等级小球（保留' + keepCount + '个）', 'info');
+  } else {
+    gameState.balls = remaining;
+    const removed = before - gameState.balls.length;
+    if (removed > 0) showToast('已清理 ' + removed + ' 个低等级小球', 'info');
   }
   showToast('招募小球升级到 Lv.' + gameState.spawnLevel + '！', 'success');
+  saveGame();
+  updateUI();
+}
+
+function upgradeSpawnLevelMax() {
+  let count = 0;
+  while (gameState.coins >= (gameState.spawnLevel * gameState.spawnLevel * 100000)) {
+    gameState.coins -= gameState.spawnLevel * gameState.spawnLevel * 100000;
+    gameState.spawnLevel++;
+    count++;
+  }
+  if (count === 0) {
+    showToast('金币不足！', 'error');
+    return;
+  }
+  // 清理低于新招募等级的小球（保留至少3个规则）
+  const before = gameState.balls.length;
+  const remaining = gameState.balls.filter(b => b.level >= gameState.spawnLevel);
+  const cleaned = gameState.balls.filter(b => b.level < gameState.spawnLevel);
+  const sl = gameState.spawnLevel;
+  const spawnCost = (remaining.length + 1) * 4 * sl * sl;
+  if (remaining.length < 3 && gameState.coins < spawnCost) {
+    cleaned.sort((a, b) => b.level - a.level);
+    const keepCount = Math.min(3 - remaining.length, cleaned.length);
+    gameState.balls = [...remaining, ...cleaned.slice(0, keepCount)];
+    const removed = before - gameState.balls.length;
+    if (removed > 0) showToast('已清理 ' + removed + ' 个低等级小球（保留' + keepCount + '个）', 'info');
+  } else {
+    gameState.balls = remaining;
+    const removed = before - gameState.balls.length;
+    if (removed > 0) showToast('已清理 ' + removed + ' 个低等级小球', 'info');
+  }
+  showToast('招募小球一键升级到 Lv.' + gameState.spawnLevel + '！(' + count + '次)', 'success');
   saveGame();
   updateUI();
 }
@@ -978,6 +1055,10 @@ function upgradeAllBouncePads() {
     showToast('请先解锁全部9个弹跳板！', 'error');
     return;
   }
+  if (gameState.bouncePadLevel >= 10000) {
+    showToast('弹跳板已达最高等级！', 'error');
+    return;
+  }
   const cost = getUpgradeCost(gameState.bouncePadLevel);
   if (gameState.coins < cost) {
     showToast('金币不足！需要 ' + formatGold(cost) + ' 金币', 'error');
@@ -995,8 +1076,12 @@ function upgradeAllBouncePadsMax() {
     showToast('请先解锁全部9个弹跳板！', 'error');
     return;
   }
+  if (gameState.bouncePadLevel >= 10000) {
+    showToast('弹跳板已达最高等级！', 'error');
+    return;
+  }
   let count = 0;
-  while (gameState.coins >= getUpgradeCost(gameState.bouncePadLevel)) {
+  while (gameState.bouncePadLevel < 10000 && gameState.coins >= getUpgradeCost(gameState.bouncePadLevel)) {
     gameState.coins -= getUpgradeCost(gameState.bouncePadLevel);
     gameState.bouncePadLevel++;
     count++;
@@ -1407,6 +1492,15 @@ function updateUI() {
     upgBtn.className = canUp ? 'btn-spawn-upgrade ready' : 'btn-spawn-upgrade';
   }
 
+  const maxUpgBtn = document.getElementById('btn-spawn-max-upgrade');
+  if (maxUpgBtn) {
+    const ul = gameState.spawnLevel;
+    const upCost = ul * ul * 100000;
+    const canUp = gameState.coins >= upCost;
+    maxUpgBtn.disabled = !canUp;
+    maxUpgBtn.className = canUp ? 'btn-spawn-max-upgrade ready' : 'btn-spawn-max-upgrade';
+  }
+
   const mergeBtn = document.getElementById('btn-merge');
   if (mergeBtn) {
     const bestLv = getHighestLevelWithPair();
@@ -1477,10 +1571,9 @@ function updateUI() {
   const buyBtn = document.getElementById('btn-buy-pad');
   const next = getNextPadIndex();
   if (next === -1) {
-    buyBtn.textContent = '弹跳板已全部购买';
-    buyBtn.disabled = true;
-    buyBtn.className = 'btn-buy-pad';
+    buyBtn.style.display = 'none';
   } else {
+    buyBtn.style.display = '';
     const c = getUnlockCost(next);
     buyBtn.textContent = '购买弹跳板(' + formatGold(c) + '金)';
     buyBtn.disabled = false;
@@ -1492,11 +1585,13 @@ function updateUI() {
   const uc = getUpgradeCost(gameState.bouncePadLevel);
   const bl = gameState.bouncePadLevel;
   if (!al) { ub.textContent = '升级弹跳板(需解锁9个)'; ub.disabled = true; }
+  else if (bl >= 10000) { ub.textContent = '弹跳板已满级'; ub.disabled = true; }
   else { ub.textContent = '升级弹跳板(Lv.' + bl + '→' + (bl + 1) + ' ' + formatGold(uc) + '金)'; ub.disabled = gameState.coins < uc; }
 
   const uba = document.getElementById('btn-upgrade-all');
   if (uba) {
     if (!al) { uba.textContent = '一键升级'; uba.disabled = true; uba.className = 'btn-upgrade-all'; }
+    else if (bl >= 10000) { uba.textContent = '已满级'; uba.disabled = true; uba.className = 'btn-upgrade-all'; }
     else {
       uba.disabled = gameState.coins < uc;
       uba.className = gameState.coins >= uc ? 'btn-upgrade-all ready' : 'btn-upgrade-all';
