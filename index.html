@@ -111,6 +111,16 @@
     background: linear-gradient(135deg, #9933FF, #7722CC);
     color: white;
   }
+  .btn-upgrade-all {
+    background: #333;
+    color: #888;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  .btn-upgrade-all.ready {
+    background: linear-gradient(135deg, #cc33ff, #aa22dd);
+    color: white;
+  }
   .btn-spawn-upgrade {
     background: #333;
     color: #888;
@@ -172,7 +182,7 @@
     }
 
     .btn-spawn, .btn-spawn-batch, .btn-merge-main, .btn-merge-all,
-    .btn-upgrade, .btn-buy-pad, .btn-spawn-upgrade {
+    .btn-upgrade, .btn-buy-pad, .btn-spawn-upgrade, .btn-upgrade-all {
       min-height: 38px;
       padding: 8px 10px;
       font-size: 12px;
@@ -216,7 +226,7 @@
     }
 
     .btn-spawn, .btn-spawn-batch, .btn-merge-main, .btn-merge-all,
-    .btn-upgrade, .btn-buy-pad, .btn-spawn-upgrade {
+    .btn-upgrade, .btn-buy-pad, .btn-spawn-upgrade, .btn-upgrade-all {
       padding: 7px 8px;
       font-size: 11px;
       min-height: 36px;
@@ -253,6 +263,7 @@
     <div class="bottom-row">
       <button class="btn-buy-pad" id="btn-buy-pad" onclick="buyNextPad()">购买弹跳板</button>
       <button class="btn-upgrade" id="btn-upgrade" onclick="upgradeAllBouncePads()" disabled>升级弹跳板</button>
+      <button class="btn-upgrade-all" id="btn-upgrade-all" onclick="upgradeAllBouncePadsMax()" disabled>一键升级</button>
     </div>
   </div>
 </div>
@@ -463,7 +474,7 @@ function resolveLetterCollision(ball) {
         const pd = Math.sqrt(dx * dx + dy * dy);
         if (pd < 40) {
           ball._letterRewarded = true;
-          addCoins(getWallCoinReward(ball.level) * gameState.bouncePadLevel);
+          addCoins(getWallCoinReward(ball.level) * gameState.bouncePadLevel * getHighestLevel());
           spawnParticles(collisionInfo.x, collisionInfo.y, getPadColor(gameState.bouncePadLevel), 5);
           break;
         }
@@ -674,6 +685,13 @@ function getUpgradeCost(curLv) {
   return 10000 + (curLv - 1) * 5000;
 }
 function addCoins(amt) { gameState.coins += amt; }
+
+function getHighestLevel() {
+  if (gameState.balls.length === 0) return 1;
+  let max = 0;
+  for (const b of gameState.balls) { if (b.level > max) max = b.level; }
+  return max;
+}
 
 function formatGold(n) {
   if (n < 10000) return n.toString();
@@ -972,6 +990,26 @@ function upgradeAllBouncePads() {
   updateUI();
 }
 
+function upgradeAllBouncePadsMax() {
+  if (!gameState.bouncePads.every(p => p.unlocked)) {
+    showToast('请先解锁全部9个弹跳板！', 'error');
+    return;
+  }
+  let count = 0;
+  while (gameState.coins >= getUpgradeCost(gameState.bouncePadLevel)) {
+    gameState.coins -= getUpgradeCost(gameState.bouncePadLevel);
+    gameState.bouncePadLevel++;
+    count++;
+  }
+  if (count === 0) {
+    showToast('金币不足！', 'error');
+  } else {
+    showToast('弹跳板一键升级到 Lv.' + gameState.bouncePadLevel + '！(' + count + '次)', 'success');
+    saveGame();
+    updateUI();
+  }
+}
+
 // ==================== 曲线碰撞检测 [基础关] ====================
 function segmentToBall(sx, sy, ex, ey, bx, by, r) {
   const dx = ex - sx, dy = ey - sy;
@@ -1016,7 +1054,7 @@ function resolveCurveCollision(ball) {
           const segT = (i + result.t) / CURVE_SAMPLES;
           const pad = getPadForT(segT);
           if (pad && pad.unlocked) {
-            const reward = getWallCoinReward(ball.level) * gameState.bouncePadLevel;
+            const reward = getWallCoinReward(ball.level) * gameState.bouncePadLevel * getHighestLevel();
             addCoins(reward);
             spawnParticles(result.cx, result.cy, getPadColor(gameState.bouncePadLevel), 5);
           }
@@ -1039,7 +1077,7 @@ function checkWallCollision(ball) {
         if (pad.type === 'wall' && pad.side === 'left' && pad.unlocked &&
             ball.y >= pad.yStart && ball.y <= pad.yEnd) {
           ball._wallRewarded = true;
-          const reward = getWallCoinReward(ball.level) * gameState.bouncePadLevel;
+          const reward = getWallCoinReward(ball.level) * gameState.bouncePadLevel * getHighestLevel();
           addCoins(reward);
           spawnParticles(LEFT_X, ball.y, getPadColor(gameState.bouncePadLevel), 5);
           break;
@@ -1056,7 +1094,7 @@ function checkWallCollision(ball) {
           ball.y >= pad.yStart && ball.y <= pad.yEnd) {
         if (!ball._wallRewarded) {
           ball._wallRewarded = true;
-          const reward = getWallCoinReward(ball.level) * gameState.bouncePadLevel;
+          const reward = getWallCoinReward(ball.level) * gameState.bouncePadLevel * getHighestLevel();
           addCoins(reward);
           spawnParticles(RIGHT_X, ball.y, getPadColor(gameState.bouncePadLevel), 5);
         }
@@ -1304,7 +1342,7 @@ function render() {
   ctx.fillStyle = 'rgba(0,0,0,0.55)';
   ctx.strokeStyle = 'rgba(255,255,255,0.1)';
   ctx.lineWidth = 1;
-  roundRect(12, 8, 198, 102, 6);
+  roundRect(12, 8, 198, 120, 6);
 
   ctx.fillStyle = '#ff9900';
   ctx.font = 'bold 14px "Microsoft YaHei", Arial';
@@ -1324,10 +1362,14 @@ function render() {
   ctx.font = 'bold 12px "Microsoft YaHei", Arial';
   ctx.fillText('最高: Lv.' + highestLv, 22, 78);
 
+  ctx.fillStyle = '#ffaa44';
+  ctx.font = '10px "Microsoft YaHei", Arial';
+  ctx.fillText('(所得金币×' + getHighestLevel() + ')', 22, 94);
+
   ctx.fillStyle = '#66ccff';
   ctx.font = '11px "Microsoft YaHei", Arial';
   const nextName = gameState.currentStage >= 26 ? '全部通关！' : ('→ 100级进入' + getStageFullName(gameState.currentStage + 1));
-  ctx.fillText(nextName, 22, 96);
+  ctx.fillText(nextName, 22, 112);
 }
 
 function roundRect(x, y, w, h, r) {
@@ -1451,6 +1493,15 @@ function updateUI() {
   const bl = gameState.bouncePadLevel;
   if (!al) { ub.textContent = '升级弹跳板(需解锁9个)'; ub.disabled = true; }
   else { ub.textContent = '升级弹跳板(Lv.' + bl + '→' + (bl + 1) + ' ' + formatGold(uc) + '金)'; ub.disabled = gameState.coins < uc; }
+
+  const uba = document.getElementById('btn-upgrade-all');
+  if (uba) {
+    if (!al) { uba.textContent = '一键升级'; uba.disabled = true; uba.className = 'btn-upgrade-all'; }
+    else {
+      uba.disabled = gameState.coins < uc;
+      uba.className = gameState.coins >= uc ? 'btn-upgrade-all ready' : 'btn-upgrade-all';
+    }
+  }
 }
 
 // ==================== 主循环 ====================
