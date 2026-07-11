@@ -1,0 +1,1385 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
+<title>小球合成大作战</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: #0a0a1a;
+    font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+    color: #fff;
+    user-select: none;
+  }
+  #game-container {
+    width: 100%; height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: #0a0a1a;
+  }
+  #top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 5px 10px;
+    background: #12122a;
+    flex-wrap: wrap;
+    gap: 6px;
+    flex-shrink: 0;
+    border-bottom: 1px solid #1a1a35;
+  }
+  #title {
+    font-size: 17px;
+    font-weight: bold;
+    background: linear-gradient(135deg, #ffd700, #ff8800);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-right: 8px;
+  }
+  button {
+    padding: 5px 10px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: bold;
+    transition: all 0.15s;
+    font-family: inherit;
+    white-space: nowrap;
+  }
+  button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+  button:active:not(:disabled) { transform: translateY(0); }
+  button:disabled { opacity: 0.35; cursor: not-allowed; transform: none !important; }
+  .btn-spawn { background: linear-gradient(135deg, #4CAF50, #388E3C); color: white; }
+  .btn-merge-main {
+    padding: 4px 14px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: bold;
+    border: 1.5px solid #333;
+    cursor: default;
+    background: #1e1e38;
+    color: #555;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .btn-merge-main.ready {
+    background: #1a3a2a;
+    border-color: #4CAF50;
+    color: #4CAF50;
+    cursor: pointer;
+  }
+  .btn-merge-main.ready:hover { background: #2a5a3a; }
+  #canvas-wrap {
+    flex: 1 1 auto;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    background: #0a0a1a;
+  }
+  canvas {
+    display: block;
+    border-radius: 4px;
+    cursor: default;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+  #bottom-bar {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 4px 10px;
+    background: #12122a;
+    gap: 4px;
+    flex-shrink: 0;
+    border-top: 1px solid #1a1a35;
+  }
+  .bottom-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  #pad-level-display { font-size: 12px; color: #ccc; }
+  .btn-upgrade {
+    background: linear-gradient(135deg, #9933FF, #7722CC);
+    color: white;
+  }
+  .btn-buy-pad { background: #333; color: #888; }
+  .btn-buy-pad.ready { background: linear-gradient(135deg, #2266DD, #1155CC); color: white; }
+  .btn-spawn-batch { background: #333; color: #666; font-size: 11px; }
+  .btn-spawn-batch.unlocked { background: linear-gradient(135deg, #4CAF50, #2E7D32); color: white; }
+  .btn-merge-all { background: #333; color: #666; font-size: 11px; }
+  .btn-merge-all.unlocked { background: linear-gradient(135deg, #FF6600, #CC4400); color: white; }
+  #toast-container {
+    position: fixed; top: 10px; left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    display: flex; flex-direction: column; gap: 6px;
+    pointer-events: none;
+  }
+  .toast {
+    padding: 7px 16px; border-radius: 5px;
+    font-size: 13px; font-weight: bold;
+    animation: toastIn 0.3s ease, toastOut 0.3s ease 1.5s forwards;
+    text-align: center;
+    box-shadow: 0 3px 12px rgba(0,0,0,0.3);
+  }
+  .toast.success { background: #4CAF50; color: white; }
+  .toast.error { background: #e53935; color: white; }
+  .toast.info { background: #3399FF; color: white; }
+  @keyframes toastIn {
+    from { opacity: 0; transform: translateY(-20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes toastOut {
+    from { opacity: 1; transform: translateY(0); }
+    to { opacity: 0; transform: translateY(-20px); }
+  }
+
+  /* ==================== 移动端适配 ==================== */
+  @media (max-width: 768px) {
+    #top-bar {
+      padding: 8px 8px;
+      gap: 8px;
+    }
+    #title {
+      font-size: 15px;
+    }
+
+    button {
+      padding: 8px 12px;
+      font-size: 13px;
+      min-height: 38px;
+      border-radius: 6px;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .btn-spawn, .btn-spawn-batch, .btn-merge-main, .btn-merge-all,
+    .btn-upgrade, .btn-buy-pad {
+      min-height: 38px;
+      padding: 8px 10px;
+      font-size: 12px;
+    }
+
+    #bottom-bar {
+      padding: 6px 8px;
+      gap: 6px;
+    }
+    .bottom-row {
+      gap: 6px;
+      width: 100%;
+      justify-content: center;
+    }
+
+    #pad-level-display {
+      font-size: 13px;
+    }
+
+    .toast {
+      font-size: 14px;
+      padding: 10px 20px;
+      border-radius: 6px;
+    }
+    #toast-container {
+      top: 60px;
+      width: 90%;
+      max-width: 320px;
+    }
+  }
+
+  @media (max-width: 480px) {
+    #title {
+      font-size: 14px;
+    }
+
+    button {
+      padding: 8px 8px;
+      font-size: 11px;
+      min-height: 36px;
+    }
+
+    .bottom-row {
+      gap: 4px;
+    }
+
+    .btn-spawn, .btn-spawn-batch, .btn-merge-main, .btn-merge-all,
+    .btn-upgrade, .btn-buy-pad {
+      padding: 7px 8px;
+      font-size: 11px;
+      min-height: 36px;
+    }
+
+    #toast-container {
+      top: 50px;
+    }
+    .toast {
+      font-size: 13px;
+      padding: 8px 14px;
+    }
+  }
+</style>
+</head>
+<body>
+<div id="game-container">
+  <div id="top-bar">
+    <span id="title">小球合成大作战</span>
+  </div>
+  <div id="canvas-wrap">
+    <canvas id="gameCanvas"></canvas>
+  </div>
+  <div id="bottom-bar">
+    <div class="bottom-row">
+      <button class="btn-spawn-batch locked" id="btn-spawn-batch" onclick="spawnBatch100()" disabled>招募100小球</button>
+      <button class="btn-spawn" id="btn-spawn" onclick="spawnBall()">招募小球</button>
+      <button class="btn-merge-main" id="btn-merge" onclick="doMerge()" disabled>合成</button>
+      <button class="btn-merge-all locked" id="btn-merge-all" onclick="mergeAll()" disabled>一键合成</button>
+    </div>
+    <div class="bottom-row">
+      <button class="btn-buy-pad" id="btn-buy-pad" onclick="buyNextPad()">购买弹跳板</button>
+      <span id="pad-level-display">弹跳板 Lv.1</span>
+      <button class="btn-upgrade" id="btn-upgrade" onclick="upgradeAllBouncePads()" disabled>升级弹跳板</button>
+    </div>
+  </div>
+</div>
+<div id="toast-container"></div>
+
+<script>
+// ==================== 常量 ====================
+const CANVAS_W = 800, CANVAS_H = 520;
+const GRAVITY = 0.35;
+const BOUNCE_DAMPING = 1.0;
+const MAX_BALLS = 100;
+const INITIAL_COINS = 0;
+
+// U型墙面：二次贝塞尔曲线(底面)+两侧直线 [基础关专用]
+const WALL_TOP_Y = 80;
+const WALL_BOT_Y = 400;
+const LEFT_X = 180, RIGHT_X = 620;
+const BEZIER_P0 = { x: 180, y: 400 };
+const BEZIER_P1 = { x: 400, y: 510 };
+const BEZIER_P2 = { x: 620, y: 400 };
+const CURVE_SAMPLES = 32;
+
+// 字母关卡：离屏Canvas用于像素碰撞检测
+const maskCanvas = document.createElement('canvas');
+maskCanvas.width = CANVAS_W;
+maskCanvas.height = CANVAS_H;
+const maskCtx = maskCanvas.getContext('2d');
+let maskImageData = null;
+const LETTER_FONT = 'bold 420px "Microsoft YaHei", "PingFang SC", Arial';
+const LETTER_FONT_VISUAL = 'bold 400px "Microsoft YaHei", "PingFang SC", Arial';
+
+const COLOR_SEQUENCE = ['#808080','#00CC66','#3399FF','#9933FF','#FF8800','#FF3333','#FFD700'];
+
+// 弹跳板购买金币自动递增
+function getUnlockCost(padId) {
+  if (padId === 0) return 0;
+  return 400 + padId * 100;
+}
+
+// ==================== Canvas ====================
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+function resizeCanvas() {
+  const wrap = document.getElementById('canvas-wrap');
+  const scale = Math.min(wrap.clientWidth / CANVAS_W, wrap.clientHeight / CANVAS_H);
+  canvas.width = CANVAS_W;
+  canvas.height = CANVAS_H;
+  canvas.style.width = (CANVAS_W * scale) + 'px';
+  canvas.style.height = (CANVAS_H * scale) + 'px';
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// ==================== 字母关卡：像素遮罩系统 ====================
+function updateLetterMask(letter) {
+  maskCtx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+  maskCtx.fillStyle = '#ffffff';
+  maskCtx.font = LETTER_FONT;
+  maskCtx.textAlign = 'center';
+  maskCtx.textBaseline = 'middle';
+  maskCtx.fillText(letter, CANVAS_W / 2, CANVAS_H / 2 + 12);
+  maskImageData = maskCtx.getImageData(0, 0, CANVAS_W, CANVAS_H);
+}
+
+function maskAlpha(x, y) {
+  const ix = Math.floor(x);
+  const iy = Math.floor(y);
+  if (ix < 0 || ix >= CANVAS_W || iy < 0 || iy >= CANVAS_H) return 0;
+  if (!maskImageData) return 0;
+  return maskImageData.data[(iy * CANVAS_W + ix) * 4 + 3];
+}
+
+// 获取字母遮罩在(x,y)处的梯度（指向内部）
+function maskGradient(x, y, d) {
+  const l = maskAlpha(x - d, y);
+  const r = maskAlpha(x + d, y);
+  const t = maskAlpha(x, y - d);
+  const b = maskAlpha(x, y + d);
+  return { gx: r - l, gy: b - t };
+}
+
+// 查找字母轮廓边界点（用于弹跳板布局）
+function findLetterOutlinePads() {
+  const pads = [];
+  // 搜索字母轮廓点
+  const boundaryPoints = [];
+  const step = 3;
+  // 上下边界
+  for (let x = 4; x < CANVAS_W - 4; x += step) {
+    for (let y = 4; y < CANVAS_H - 4; y++) {
+      if (maskAlpha(x, y)) { boundaryPoints.push({ x, y, region: 'top' }); break; }
+    }
+    for (let y = CANVAS_H - 5; y >= 4; y--) {
+      if (maskAlpha(x, y)) { boundaryPoints.push({ x, y, region: 'bottom' }); break; }
+    }
+  }
+  // 左右边界
+  for (let y = 4; y < CANVAS_H - 4; y += step) {
+    for (let x = 4; x < CANVAS_W - 4; x++) {
+      if (maskAlpha(x, y)) { boundaryPoints.push({ x, y, region: 'left' }); break; }
+    }
+    for (let x = CANVAS_W - 5; x >= 4; x--) {
+      if (maskAlpha(x, y)) { boundaryPoints.push({ x, y, region: 'right' }); break; }
+    }
+  }
+
+  if (boundaryPoints.length === 0) return pads;
+
+  // 按角度排序轮廓点（相对于中心），形成连续轮廓
+  let cx = 0, cy = 0;
+  for (const p of boundaryPoints) { cx += p.x; cy += p.y; }
+  cx /= boundaryPoints.length; cy /= boundaryPoints.length;
+  boundaryPoints.sort((a, b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx));
+
+  // 均匀采样9个点
+  const n = 9;
+  for (let i = 0; i < n; i++) {
+    const idx = Math.floor((i / n) * boundaryPoints.length);
+    const pt = boundaryPoints[idx];
+    pads.push({ x: pt.x, y: pt.y, region: pt.region });
+  }
+
+  // 找到"字母最大面积上面最中间位置"——顶部最靠近中心的轮廓点作为默认弹跳板
+  // 将第一个弹跳板放在字母顶部最中心的位置
+  let bestTop = null, bestTopDist = Infinity;
+  for (const bp of boundaryPoints) {
+    if (bp.region === 'top') {
+      const d = Math.abs(bp.x - CANVAS_W / 2);
+      if (d < bestTopDist) { bestTopDist = d; bestTop = bp; }
+    }
+  }
+  if (bestTop) {
+    pads[0] = { x: bestTop.x, y: bestTop.y, region: 'top' };
+  }
+  return pads;
+}
+
+// 初始化字母关卡弹跳板
+function initLetterBouncePads() {
+  const letter = getStageName(gameState.currentStage);
+  updateLetterMask(letter);
+  const padPts = findLetterOutlinePads();
+  gameState.bouncePads = padPts.map((pt, i) => ({
+    id: i,
+    x: pt.x,
+    y: pt.y,
+    unlocked: i === 0,
+    type: 'letter'
+  }));
+}
+
+// ==================== 字母关卡碰撞检测 ====================
+function resolveLetterCollision(ball) {
+  if (gameState.currentStage === 0 || !maskImageData) return;
+
+  const r = ball.radius;
+  const sampleCount = 16;
+  let collisionInfo = null;
+
+  // 检测球表面16个点
+  for (let i = 0; i < sampleCount; i++) {
+    const angle = (i / sampleCount) * Math.PI * 2;
+    const sx = ball.x + Math.cos(angle) * (r + 0.5);
+    const sy = ball.y + Math.sin(angle) * (r + 0.5);
+    if (!maskAlpha(sx, sy)) {
+      collisionInfo = { x: sx, y: sy, angle };
+      break;
+    }
+  }
+
+  if (collisionInfo) {
+    // 估算碰撞点法线（指向字母内部）
+    const d = 6;
+    const grad = maskGradient(collisionInfo.x, collisionInfo.y, d);
+    let nx = grad.gx;
+    let ny = grad.gy;
+    const len = Math.sqrt(nx * nx + ny * ny);
+    if (len > 0.001) {
+      nx /= len; ny /= len;
+    } else {
+      nx = -Math.cos(collisionInfo.angle);
+      ny = -Math.sin(collisionInfo.angle);
+    }
+    // 验证法线方向：沿法线方向走一小段应该在内部
+    if (!maskAlpha(collisionInfo.x + nx * 8, collisionInfo.y + ny * 8)) {
+      nx = -nx; ny = -ny;
+    }
+
+    // 把球推回字母内部
+    ball.x += nx * (r + 1);
+    ball.y += ny * (r + 1);
+
+    // 速度反射（球朝墙运动时 v·N < 0 → 反射）
+    const dot = ball.vx * nx + ball.vy * ny;
+    if (dot < 0) {
+      ball.vx = (ball.vx - 2 * dot * nx) * BOUNCE_DAMPING;
+      ball.vy = (ball.vy - 2 * dot * ny) * BOUNCE_DAMPING;
+      perturbVelocity(ball);
+    }
+
+    // 弹跳板金币奖励检测
+    if (!ball._letterRewarded) {
+      for (const pad of gameState.bouncePads) {
+        if (!pad.unlocked || pad.type !== 'letter') continue;
+        const dx = collisionInfo.x - pad.x;
+        const dy = collisionInfo.y - pad.y;
+        const pd = Math.sqrt(dx * dx + dy * dy);
+        if (pd < 40) {
+          ball._letterRewarded = true;
+          addCoins(getWallCoinReward(ball.level) * gameState.bouncePadLevel);
+          spawnParticles(collisionInfo.x, collisionInfo.y, getPadColor(gameState.bouncePadLevel), 5);
+          break;
+        }
+      }
+    }
+  }
+
+  // 安全网：球心跑出字母外部，送回内部
+  if (!maskAlpha(ball.x, ball.y)) {
+    for (let searchD = 3; searchD < 150; searchD += 4) {
+      let found = false;
+      for (let a = 0; a < Math.PI * 2; a += 0.2) {
+        const tx = ball.x + Math.cos(a) * searchD;
+        const ty = ball.y + Math.sin(a) * searchD;
+        if (maskAlpha(tx, ty)) {
+          ball.x = tx;
+          ball.y = ty;
+          ball.vx = Math.cos(a) * 3;
+          ball.vy = Math.sin(a) * 3;
+          found = true;
+          break;
+        }
+      }
+      if (found) break;
+    }
+  }
+}
+
+// ==================== 预计算贝塞尔曲线离散点 [基础关] ====================
+function bezierPoint(t) {
+  const mt = 1 - t;
+  return {
+    x: mt * mt * BEZIER_P0.x + 2 * mt * t * BEZIER_P1.x + t * t * BEZIER_P2.x,
+    y: mt * mt * BEZIER_P0.y + 2 * mt * t * BEZIER_P1.y + t * t * BEZIER_P2.y
+  };
+}
+
+function getCurveYForX(x) {
+  if (x <= LEFT_X) return BEZIER_P0.y;
+  if (x >= RIGHT_X) return BEZIER_P2.y;
+  let lo = 0, hi = 1;
+  for (let i = 0; i < 24; i++) {
+    const mid = (lo + hi) / 2;
+    if (bezierPoint(mid).x < x) lo = mid;
+    else hi = mid;
+  }
+  return bezierPoint((lo + hi) / 2).y;
+}
+
+const curvePoints = [];
+for (let i = 0; i <= CURVE_SAMPLES; i++) {
+  curvePoints.push(bezierPoint(i / CURVE_SAMPLES));
+}
+
+const curveSegments = [];
+for (let i = 0; i < CURVE_SAMPLES; i++) {
+  const p0 = curvePoints[i];
+  const p1 = curvePoints[i + 1];
+  const dx = p1.x - p0.x;
+  const dy = p1.y - p0.y;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  const nx = -dy / len;
+  const ny = dx / len;
+  const dotUp = (p0.y + p1.y) / 2 - 400;
+  curveSegments.push({
+    x1: p0.x, y1: p0.y, x2: p1.x, y2: p1.y,
+    nx: ny > 0 ? nx : -nx,
+    ny: ny > 0 ? ny : -ny,
+    len: len
+  });
+}
+
+// ==================== 弹跳板 [基础关] ====================
+const WALL_HALF = (WALL_BOT_Y - WALL_TOP_Y) / 2;
+const padDefs = [
+  { id: 0, type: 'curve', tStart: 2/5, tEnd: 3/5 },
+  { id: 1, type: 'curve', tStart: 1/5, tEnd: 2/5 },
+  { id: 2, type: 'curve', tStart: 3/5, tEnd: 4/5 },
+  { id: 3, type: 'curve', tStart: 0, tEnd: 1/5 },
+  { id: 4, type: 'curve', tStart: 4/5, tEnd: 1 },
+  { id: 5, type: 'wall', side: 'left', yStart: WALL_TOP_Y, yEnd: WALL_TOP_Y + WALL_HALF },
+  { id: 6, type: 'wall', side: 'right', yStart: WALL_TOP_Y, yEnd: WALL_TOP_Y + WALL_HALF },
+  { id: 7, type: 'wall', side: 'left', yStart: WALL_TOP_Y + WALL_HALF, yEnd: WALL_BOT_Y },
+  { id: 8, type: 'wall', side: 'right', yStart: WALL_TOP_Y + WALL_HALF, yEnd: WALL_BOT_Y },
+];
+
+function initBouncePads() {
+  if (gameState.currentStage > 0) {
+    initLetterBouncePads();
+    return;
+  }
+  gameState.bouncePads = padDefs.map(d => {
+    const base = { id: d.id, unlocked: d.id === 0, type: d.type };
+    if (d.type === 'curve') {
+      base.tStart = d.tStart; base.tEnd = d.tEnd;
+    } else {
+      base.side = d.side; base.yStart = d.yStart; base.yEnd = d.yEnd;
+    }
+    return base;
+  });
+}
+
+// ==================== 关卡系统 ====================
+const STAGE_LABELS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+function getStageName(stage) {
+  if (stage === 0) return '';
+  return STAGE_LABELS[stage - 1];
+}
+function getStageFullName(stage) {
+  const suffix = getStageName(stage);
+  return '第' + stage + '关' + (suffix ? ' ' + suffix : '');
+}
+
+function nextStage() {
+  if (gameState.currentStage >= 26) {
+    showToast('已通关，敬请期待新版本！', 'success');
+    return;
+  }
+  gameState.currentStage++;
+  gameState.balls = [];
+  gameState.bouncePads = [];
+  gameState.bouncePadLevel = 1;
+  gameState.particles = [];
+  initBouncePads();
+  for (let i = 0; i < 3; i++) spawnBall();
+  showToast('进入 ' + getStageFullName(gameState.currentStage) + '！', 'success');
+}
+
+// ==================== 游戏状态 ====================
+const gameState = {
+  coins: INITIAL_COINS,
+  balls: [],
+  bouncePadLevel: 1,
+  bouncePads: [],
+  particles: [],
+  currentStage: 0,
+  running: true
+};
+
+// ==================== 辅助函数 ====================
+function getBallColor(lv) { return COLOR_SEQUENCE[(lv - 1) % 7]; }
+function getPadColor(lv) {
+  if (lv === 1) return '#808080';
+  if (lv === 2) return '#00CC66';
+  return COLOR_SEQUENCE[(lv - 1) % 7];
+}
+function getWallCoinReward(lv) {
+  if (lv <= 5) return 1 + (lv - 1) * 3;
+  if (lv <= 10) return 17 + (lv - 6) * 4;
+  return lv + 1;
+}
+function getMergeCost(lv) {
+  if (lv === 1) return 10;
+  if (lv === 2) return 40;
+  return lv * lv * 2;
+}
+function getUpgradeCost(curLv) {
+  if (curLv === 1) return 10000;
+  if (curLv === 2) return 15000;
+  return 10000 + (curLv - 1) * 5000;
+}
+function addCoins(amt) { gameState.coins += amt; }
+
+// ==================== 粒子 ====================
+function spawnParticles(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const s = 1 + Math.random() * 3;
+    gameState.particles.push({
+      x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s,
+      life: 1, decay: 0.025 + Math.random() * 0.04,
+      color, size: 2 + Math.random() * 3
+    });
+  }
+}
+function updateParticles() {
+  for (let i = gameState.particles.length - 1; i >= 0; i--) {
+    const p = gameState.particles[i];
+    p.x += p.vx; p.y += p.vy; p.vy += 0.05;
+    p.life -= p.decay;
+    if (p.life <= 0) gameState.particles.splice(i, 1);
+  }
+}
+function renderParticles() {
+  for (const p of gameState.particles) {
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ==================== Toast ====================
+function showToast(msg, type) {
+  const c = document.getElementById('toast-container');
+  const t = document.createElement('div');
+  t.className = 'toast ' + type;
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => { if (t.parentNode) t.remove(); }, 1800);
+}
+
+// ==================== 小球操作 ====================
+function getValidSpawnPoint() {
+  if (gameState.currentStage === 0) {
+    return { x: 370 + Math.random() * 60, y: WALL_TOP_Y + 20 };
+  }
+  // 字母关卡：在字母内部寻找合法生成点
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const x = 150 + Math.random() * 500;
+    const y = 80 + Math.random() * 380;
+    if (maskAlpha(x, y)) {
+      return { x, y };
+    }
+  }
+  return { x: CANVAS_W / 2, y: CANVAS_H / 2 };
+}
+
+function spawnBall() {
+  if (gameState.balls.length >= MAX_BALLS) {
+    showToast('小球已达上限(100个)！', 'error');
+    return;
+  }
+  const cost = (gameState.balls.length + 1) * 4;
+  if (gameState.coins < cost) {
+    showToast('金币不足！需要 ' + cost + ' 金币', 'error');
+    return;
+  }
+  gameState.coins -= cost;
+  const sp = getValidSpawnPoint();
+  gameState.balls.push({
+    x: sp.x, y: sp.y,
+    vx: (Math.random() - 0.5) * 5, vy: 1,
+    radius: 14, level: 1,
+    color: getBallColor(1), isActive: true
+  });
+  updateUI();
+}
+
+function mergeBalls(level) {
+  const sameLevel = gameState.balls.filter(b => b.level === level);
+  if (sameLevel.length < 2) {
+    showToast('需要2个同等级小球！', 'error');
+    return;
+  }
+  const cost = getMergeCost(level);
+  if (gameState.coins < cost) {
+    showToast('金币不足！需要 ' + cost + ' 金币', 'error');
+    return;
+  }
+  gameState.coins -= cost;
+  const [b1, b2] = sameLevel;
+  const midX = (b1.x + b2.x) / 2, midY = (b1.y + b2.y) / 2;
+
+  gameState.balls = gameState.balls.filter(b => b !== b1 && b !== b2);
+  const nl = level + 1;
+  // 字母关卡中确保新球在字母内部
+  const sp = (gameState.currentStage > 0 && !maskAlpha(midX, midY)) ? getValidSpawnPoint() : { x: midX, y: midY };
+  gameState.balls.push({
+    x: sp.x, y: sp.y,
+    vx: (Math.random() - 0.5) * 5, vy: -3,
+    radius: 14, level: nl,
+    color: getBallColor(nl), isActive: true
+  });
+  spawnParticles(sp.x, sp.y, getBallColor(nl), 15);
+  showToast('合成 Lv.' + nl + ' 小球！', 'success');
+  updateUI();
+}
+
+// ==================== 智能合成 ====================
+function getHighestLevelWithPair() {
+  const lc = {};
+  gameState.balls.forEach(b => lc[b.level] = (lc[b.level] || 0) + 1);
+  let highest = -1;
+  for (const [lv, count] of Object.entries(lc)) {
+    if (count >= 2) {
+      const lvNum = Number(lv);
+      if (lvNum > highest) highest = lvNum;
+    }
+  }
+  return highest;
+}
+
+function doMerge() {
+  const level = getHighestLevelWithPair();
+  if (level === -1) return;
+  mergeBalls(level);
+}
+
+function perturbVelocity(ball) {
+  const speed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
+  if (speed < 0.5) return;
+  const angle = Math.atan2(ball.vy, ball.vx) + (Math.random() - 0.5) * 0.14;
+  ball.vx = Math.cos(angle) * speed;
+  ball.vy = Math.sin(angle) * speed;
+}
+
+// ==================== 批量操作 ====================
+function getHighestBallLevel() {
+  let maxLv = 0;
+  for (const b of gameState.balls) {
+    if (b.level > maxLv) maxLv = b.level;
+  }
+  return maxLv;
+}
+
+function spawnBatch100() {
+  const highestLv = getHighestBallLevel();
+  if (highestLv < 20) {
+    showToast('需要最高小球达到Lv.20才能解锁！', 'error');
+    return;
+  }
+  if (gameState.balls.length >= MAX_BALLS) {
+    showToast('小球已达上限(100个)！', 'error');
+    return;
+  }
+  const n = Math.min(100, MAX_BALLS - gameState.balls.length);
+  // 总成本 = sum_{i=1}^{n} (currentCount + i) * 4
+  const cur = gameState.balls.length;
+  const totalCost = 4 * (n * cur + n * (n + 1) / 2);
+  if (gameState.coins < totalCost) {
+    showToast('金币不足！需要 ' + totalCost + ' 金币', 'error');
+    return;
+  }
+  gameState.coins -= totalCost;
+  for (let i = 0; i < n; i++) {
+    const sp = getValidSpawnPoint();
+    gameState.balls.push({
+      x: sp.x, y: sp.y,
+      vx: (Math.random() - 0.5) * 5, vy: 1,
+      radius: 14, level: 1,
+      color: getBallColor(1), isActive: true
+    });
+  }
+  showToast('成功招募 ' + n + ' 个小球！', 'success');
+  updateUI();
+}
+
+function mergeAll() {
+  const highestLv = getHighestBallLevel();
+  if (highestLv < 40) {
+    showToast('需要最高小球达到Lv.40才能解锁！', 'error');
+    return;
+  }
+  let merged = 0;
+  while (true) {
+    const level = getHighestLevelWithPair();
+    if (level === -1) break;
+    const cost = getMergeCost(level);
+    if (gameState.coins < cost) break;
+    // 内联合成（不弹toast）
+    const sameLevel = gameState.balls.filter(b => b.level === level);
+    if (sameLevel.length < 2) break;
+    const [b1, b2] = sameLevel;
+    const midX = (b1.x + b2.x) / 2, midY = (b1.y + b2.y) / 2;
+    gameState.coins -= cost;
+    gameState.balls = gameState.balls.filter(b => b !== b1 && b !== b2);
+    const nl = level + 1;
+    const sp = (gameState.currentStage > 0 && !maskAlpha(midX, midY)) ? getValidSpawnPoint() : { x: midX, y: midY };
+    gameState.balls.push({
+      x: sp.x, y: sp.y,
+      vx: (Math.random() - 0.5) * 5, vy: -3,
+      radius: 14, level: nl,
+      color: getBallColor(nl), isActive: true
+    });
+    spawnParticles(sp.x, sp.y, getBallColor(nl), 15);
+    merged++;
+  }
+  if (merged === 0) {
+    showToast('没有可合成的小球！', 'info');
+  } else {
+    showToast('一键合成完成！共合成 ' + merged + ' 次', 'success');
+  }
+  updateUI();
+}
+
+// ==================== 弹跳板操作 ====================
+function getNextPadIndex() {
+  for (let i = 1; i < 9; i++) {
+    if (!gameState.bouncePads.find(p => p.id === i).unlocked) return i;
+  }
+  return -1;
+}
+
+function buyNextPad() {
+  const idx = getNextPadIndex();
+  if (idx === -1) {
+    showToast('弹跳板已全部购买！', 'info');
+    return;
+  }
+  const cost = getUnlockCost(idx);
+  if (gameState.coins < cost) {
+    showToast('金币不足！需要 ' + cost + ' 金币', 'error');
+    return;
+  }
+  gameState.coins -= cost;
+  const pad = gameState.bouncePads.find(p => p.id === idx);
+  pad.unlocked = true;
+  showToast('弹跳板 #' + (idx + 1) + ' 已解锁！', 'success');
+  updateUI();
+}
+
+function upgradeAllBouncePads() {
+  if (!gameState.bouncePads.every(p => p.unlocked)) {
+    showToast('请先解锁全部9个弹跳板！', 'error');
+    return;
+  }
+  const cost = getUpgradeCost(gameState.bouncePadLevel);
+  if (gameState.coins < cost) {
+    showToast('金币不足！需要 ' + cost + ' 金币', 'error');
+    return;
+  }
+  gameState.coins -= cost;
+  gameState.bouncePadLevel++;
+  showToast('弹跳板升级到 Lv.' + gameState.bouncePadLevel + '！', 'success');
+  updateUI();
+}
+
+// ==================== 曲线碰撞检测 [基础关] ====================
+function segmentToBall(sx, sy, ex, ey, bx, by, r) {
+  const dx = ex - sx, dy = ey - sy;
+  const fx = sx - bx, fy = sy - by;
+  const a = dx * dx + dy * dy;
+  const b = 2 * (fx * dx + fy * dy);
+  const c = fx * fx + fy * fy - r * r;
+  let t = a > 0.001 ? Math.max(0, Math.min(1, -b / (2 * a))) : 0;
+  const cx = sx + t * dx, cy = sy + t * dy;
+  const dist = Math.sqrt((cx - bx) ** 2 + (cy - by) ** 2);
+  return { hit: dist <= r, cx, cy, t, dist };
+}
+
+function getPadForT(t) {
+  for (const pad of gameState.bouncePads) {
+    if (pad.type !== 'curve') continue;
+    if (t >= pad.tStart && t <= pad.tEnd) return pad;
+  }
+  return null;
+}
+
+function resolveCurveCollision(ball) {
+  let rewarded = false;
+  for (let pass = 0; pass < 4; pass++) {
+    let hit = false;
+    for (let i = 0; i < CURVE_SAMPLES; i++) {
+      const seg = curveSegments[i];
+      const result = segmentToBall(seg.x1, seg.y1, seg.x2, seg.y2, ball.x, ball.y, ball.radius);
+      if (result.hit) {
+        hit = true;
+        const pen = ball.radius - result.dist + 1.0;
+        ball.x += seg.nx * pen;
+        ball.y += seg.ny * pen;
+        const dot = ball.vx * seg.nx + ball.vy * seg.ny;
+        if (dot < 0) {
+          ball.vx = (ball.vx - 2 * dot * seg.nx) * BOUNCE_DAMPING;
+          ball.vy = (ball.vy - 2 * dot * seg.ny) * BOUNCE_DAMPING;
+          perturbVelocity(ball);
+        }
+        if (!rewarded) {
+          rewarded = true;
+          const segT = (i + result.t) / CURVE_SAMPLES;
+          const pad = getPadForT(segT);
+          if (pad && pad.unlocked) {
+            const reward = getWallCoinReward(ball.level) * gameState.bouncePadLevel;
+            addCoins(reward);
+            spawnParticles(result.cx, result.cy, getPadColor(gameState.bouncePadLevel), 5);
+          }
+        }
+        break;
+      }
+    }
+    if (!hit) break;
+  }
+}
+
+// ==================== 直墙碰撞 [基础关] ====================
+function checkWallCollision(ball) {
+  if (ball.y <= WALL_BOT_Y && ball.x - ball.radius <= LEFT_X) {
+    ball.x = LEFT_X + ball.radius;
+    ball.vx = Math.abs(ball.vx) * BOUNCE_DAMPING;
+    perturbVelocity(ball);
+    if (!ball._wallRewarded) {
+      for (const pad of gameState.bouncePads) {
+        if (pad.type === 'wall' && pad.side === 'left' && pad.unlocked &&
+            ball.y >= pad.yStart && ball.y <= pad.yEnd) {
+          ball._wallRewarded = true;
+          const reward = getWallCoinReward(ball.level) * gameState.bouncePadLevel;
+          addCoins(reward);
+          spawnParticles(LEFT_X, ball.y, getPadColor(gameState.bouncePadLevel), 5);
+          break;
+        }
+      }
+    }
+  }
+  if (ball.y <= WALL_BOT_Y && ball.x + ball.radius >= RIGHT_X) {
+    ball.x = RIGHT_X - ball.radius;
+    ball.vx = -Math.abs(ball.vx) * BOUNCE_DAMPING;
+    perturbVelocity(ball);
+    for (const pad of gameState.bouncePads) {
+      if (pad.type === 'wall' && pad.side === 'right' && pad.unlocked &&
+          ball.y >= pad.yStart && ball.y <= pad.yEnd) {
+        if (!ball._wallRewarded) {
+          ball._wallRewarded = true;
+          const reward = getWallCoinReward(ball.level) * gameState.bouncePadLevel;
+          addCoins(reward);
+          spawnParticles(RIGHT_X, ball.y, getPadColor(gameState.bouncePadLevel), 5);
+        }
+        break;
+      }
+    }
+  }
+}
+
+function checkTopBoundary(ball) {
+  if (ball.y - ball.radius >= WALL_TOP_Y) return;
+  if (ball.x < LEFT_X) {
+    ball.x = LEFT_X + ball.radius;
+    ball.vx = Math.abs(ball.vx) * BOUNCE_DAMPING;
+  } else if (ball.x > RIGHT_X) {
+    ball.x = RIGHT_X - ball.radius;
+    ball.vx = -Math.abs(ball.vx) * BOUNCE_DAMPING;
+  }
+  ball.y = WALL_TOP_Y + ball.radius;
+  ball.vy = Math.abs(ball.vy) * BOUNCE_DAMPING;
+  perturbVelocity(ball);
+}
+
+function checkBelowCurve(ball) {
+  if (ball.y + ball.radius < WALL_BOT_Y) return;
+  if (ball.x < LEFT_X) {
+    ball.x = LEFT_X + ball.radius;
+    ball.vx = Math.abs(ball.vx) * BOUNCE_DAMPING;
+    if (ball.y > WALL_BOT_Y) {
+      ball.y = WALL_BOT_Y - ball.radius;
+      ball.vy = -Math.abs(ball.vy) * BOUNCE_DAMPING;
+    }
+    return;
+  }
+  if (ball.x > RIGHT_X) {
+    ball.x = RIGHT_X - ball.radius;
+    ball.vx = -Math.abs(ball.vx) * BOUNCE_DAMPING;
+    if (ball.y > WALL_BOT_Y) {
+      ball.y = WALL_BOT_Y - ball.radius;
+      ball.vy = -Math.abs(ball.vy) * BOUNCE_DAMPING;
+    }
+    return;
+  }
+  const curveY = getCurveYForX(ball.x);
+  if (ball.y > curveY) {
+    ball.y = curveY - ball.radius;
+    ball.vy = -Math.abs(ball.vy) * BOUNCE_DAMPING;
+  }
+}
+
+function checkOutOfBounds(ball) {
+  if (ball.x < LEFT_X - 50 || ball.x > RIGHT_X + 50 || ball.y < -30) {
+    ball.x = 370 + Math.random() * 60;
+    ball.y = WALL_TOP_Y + 25;
+    ball.vx = (Math.random() - 0.5) * 4;
+    ball.vy = 2;
+  }
+}
+
+// ==================== 物理更新 ====================
+function updatePhysics() {
+  for (const ball of gameState.balls) {
+    if (!ball.isActive) continue;
+    ball.vy += GRAVITY;
+    ball.x += ball.vx;
+    ball.y += ball.vy;
+    ball._wallRewarded = false;
+    ball._letterRewarded = false;
+
+    if (gameState.currentStage === 0) {
+      // 基础关：U型墙面碰撞
+      resolveCurveCollision(ball);
+      checkWallCollision(ball);
+      checkTopBoundary(ball);
+      checkBelowCurve(ball);
+      checkOutOfBounds(ball);
+    } else {
+      // 字母关卡：像素碰撞
+      resolveLetterCollision(ball);
+    }
+  }
+  updateParticles();
+}
+
+// ==================== 渲染 ====================
+function render() {
+  ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+  // 背景网格
+  ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x < CANVAS_W; x += 40) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, CANVAS_H); ctx.stroke();
+  }
+  for (let y = 0; y < CANVAS_H; y += 40) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(CANVAS_W, y); ctx.stroke();
+  }
+
+  if (gameState.currentStage === 0) {
+    // ===== 基础关渲染：U型墙面 =====
+    // 底部曲线弹跳板
+    for (const pad of gameState.bouncePads) {
+      if (pad.type !== 'curve') continue;
+      const color = pad.unlocked ? getPadColor(gameState.bouncePadLevel) : '#333';
+      const si = Math.floor(pad.tStart * CURVE_SAMPLES);
+      const ei = Math.ceil(pad.tEnd * CURVE_SAMPLES);
+      for (let i = si; i < ei && i < CURVE_SAMPLES; i++) {
+        const seg = curveSegments[i];
+        let s = i === si ? pad.tStart * CURVE_SAMPLES - si : 0;
+        let e = i === ei - 1 ? pad.tEnd * CURVE_SAMPLES - i : 1;
+        s = Math.max(0, Math.min(1, s));
+        e = Math.max(0, Math.min(1, e));
+        const sx = seg.x1 + (seg.x2 - seg.x1) * s;
+        const sy = seg.y1 + (seg.y2 - seg.y1) * s;
+        const ex = seg.x1 + (seg.x2 - seg.x1) * e;
+        const ey = seg.y1 + (seg.y2 - seg.y1) * e;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = pad.unlocked ? 11 : 5;
+        ctx.lineCap = 'butt';
+        ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
+        if (pad.unlocked) {
+          ctx.strokeStyle = color;
+          ctx.globalAlpha = 0.22;
+          ctx.lineWidth = 20;
+          ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
+      }
+    }
+    // 两侧墙面弹跳板
+    for (const pad of gameState.bouncePads) {
+      if (pad.type !== 'wall') continue;
+      const color = pad.unlocked ? getPadColor(gameState.bouncePadLevel) : '#333';
+      const x = pad.side === 'left' ? LEFT_X : RIGHT_X;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = pad.unlocked ? 11 : 5;
+      ctx.lineCap = 'butt';
+      ctx.beginPath();
+      ctx.moveTo(x, pad.yStart);
+      ctx.lineTo(x, pad.yEnd);
+      ctx.stroke();
+      if (pad.unlocked) {
+        ctx.strokeStyle = color;
+        ctx.globalAlpha = 0.22;
+        ctx.lineWidth = 20;
+        ctx.beginPath();
+        ctx.moveTo(x, pad.yStart);
+        ctx.lineTo(x, pad.yEnd);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+    }
+    // U型墙面
+    ctx.strokeStyle = '#cccccc';
+    ctx.lineWidth = 8;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(LEFT_X, WALL_TOP_Y);
+    ctx.lineTo(LEFT_X, WALL_BOT_Y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(RIGHT_X, WALL_TOP_Y);
+    ctx.lineTo(RIGHT_X, WALL_BOT_Y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(BEZIER_P0.x, BEZIER_P0.y);
+    ctx.quadraticCurveTo(BEZIER_P1.x, BEZIER_P1.y, BEZIER_P2.x, BEZIER_P2.y);
+    ctx.stroke();
+  } else {
+    // ===== 字母关卡渲染：字母轮廓 =====
+    const letter = getStageName(gameState.currentStage);
+
+    // 字母半透明填充
+    ctx.fillStyle = 'rgba(255,255,255,0.05)';
+    ctx.font = LETTER_FONT_VISUAL;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(letter, CANVAS_W / 2, CANVAS_H / 2 + 10);
+
+    // 字母发光轮廓
+    ctx.save();
+    ctx.shadowColor = 'rgba(100,180,255,0.5)';
+    ctx.shadowBlur = 16;
+    ctx.strokeStyle = 'rgba(100,180,255,0.6)';
+    ctx.lineWidth = 4;
+    ctx.strokeText(letter, CANVAS_W / 2, CANVAS_H / 2 + 10);
+    ctx.restore();
+
+    // 字母外圈描边
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    ctx.lineWidth = 2;
+    ctx.strokeText(letter, CANVAS_W / 2, CANVAS_H / 2 + 10);
+
+    // 字母关卡弹跳板渲染（小光点）
+    for (const pad of gameState.bouncePads) {
+      if (pad.type !== 'letter') continue;
+      const color = pad.unlocked ? getPadColor(gameState.bouncePadLevel) : '#333';
+      // 外圈光晕
+      ctx.fillStyle = pad.unlocked ? color : '#333';
+      ctx.globalAlpha = pad.unlocked ? 0.35 : 0.5;
+      ctx.beginPath(); ctx.arc(pad.x, pad.y, 12, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+      // 核心
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(pad.x, pad.y, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(pad.x, pad.y, 5, 0, Math.PI * 2); ctx.stroke();
+    }
+  }
+
+  renderParticles();
+
+  // 小球
+  for (const ball of gameState.balls) {
+    ctx.shadowColor = ball.color;
+    ctx.shadowBlur = 10;
+    const grad = ctx.createRadialGradient(ball.x - 3, ball.y - 3, 2, ball.x, ball.y, ball.radius);
+    grad.addColorStop(0, '#ffffff');
+    grad.addColorStop(0.4, ball.color);
+    grad.addColorStop(1, '#000000');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2); ctx.stroke();
+
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 10px "Microsoft YaHei", Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Lv.' + ball.level, ball.x, ball.y);
+  }
+
+  // 左上角状态面板
+  let highestLv = 0;
+  for (const b of gameState.balls) {
+    if (b.level > highestLv) highestLv = b.level;
+  }
+
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+  ctx.lineWidth = 1;
+  roundRect(12, 8, 198, 102, 6);
+
+  ctx.fillStyle = '#ff9900';
+  ctx.font = 'bold 14px "Microsoft YaHei", Arial';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(getStageFullName(gameState.currentStage), 22, 16);
+
+  ctx.fillStyle = '#ffd700';
+  ctx.font = 'bold 14px "Microsoft YaHei", Arial';
+  ctx.fillText('金币: ' + gameState.coins, 22, 38);
+
+  ctx.fillStyle = '#aaa';
+  ctx.font = '12px "Microsoft YaHei", Arial';
+  ctx.fillText('小球: ' + gameState.balls.length + '/' + MAX_BALLS, 22, 58);
+
+  ctx.fillStyle = '#ff8800';
+  ctx.font = 'bold 12px "Microsoft YaHei", Arial';
+  ctx.fillText('最高: Lv.' + highestLv, 22, 78);
+
+  ctx.fillStyle = '#66ccff';
+  ctx.font = '11px "Microsoft YaHei", Arial';
+  const nextName = gameState.currentStage >= 26 ? '全部通关！' : ('→ 100级进入' + getStageFullName(gameState.currentStage + 1));
+  ctx.fillText(nextName, 22, 96);
+}
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+}
+
+// ==================== UI ====================
+function updateUI() {
+  const spawnBtn = document.getElementById('btn-spawn');
+  const spawnCost = (gameState.balls.length + 1) * 4;
+  spawnBtn.textContent = '招募小球(' + spawnCost + '金)';
+  spawnBtn.disabled = gameState.balls.length >= MAX_BALLS;
+
+  const mergeBtn = document.getElementById('btn-merge');
+  if (mergeBtn) {
+    const bestLv = getHighestLevelWithPair();
+    if (bestLv >= 0) {
+      const cost = getMergeCost(bestLv);
+      const canAfford = gameState.coins >= cost;
+      mergeBtn.textContent = '合成 Lv.' + bestLv + '→' + (bestLv + 1) + ' (' + cost + '金)';
+      mergeBtn.disabled = !canAfford;
+      mergeBtn.className = canAfford ? 'btn-merge-main ready' : 'btn-merge-main';
+    } else {
+      mergeBtn.textContent = '合成(需2个同等级)';
+      mergeBtn.disabled = true;
+      mergeBtn.className = 'btn-merge-main';
+    }
+  }
+
+  // 招募100小球按钮（最高Lv.20解锁）
+  const batchBtn = document.getElementById('btn-spawn-batch');
+  const highestLv = getHighestBallLevel();
+  if (highestLv >= 20) {
+    const n = Math.min(100, MAX_BALLS - gameState.balls.length);
+    const cur = gameState.balls.length;
+    const tc = 4 * (n * cur + n * (n + 1) / 2);
+    batchBtn.textContent = '招募' + n + '小球(' + tc + '金)';
+    batchBtn.disabled = n <= 0 || gameState.coins < tc;
+    batchBtn.className = 'btn-spawn-batch unlocked';
+  } else {
+    batchBtn.textContent = '招募100小球(最高Lv.20解锁)';
+    batchBtn.disabled = true;
+    batchBtn.className = 'btn-spawn-batch locked';
+  }
+
+  // 一键合成按钮（最高Lv.40解锁）
+  const mergeAllBtn = document.getElementById('btn-merge-all');
+  if (highestLv >= 40) {
+    let availMerges = 0;
+    let testCoins = gameState.coins;
+    const testBalls = [...gameState.balls.map(b => ({ ...b }))];
+    // 快速估算可合成次数
+    const lc = {};
+    testBalls.forEach(b => lc[b.level] = (lc[b.level] || 0) + 1);
+    const levels = Object.keys(lc).map(Number).sort((a, b) => b - a);
+    for (const lv of levels) {
+      while (lc[lv] >= 2) {
+        const mc = getMergeCost(lv);
+        if (testCoins < mc) break;
+        testCoins -= mc;
+        lc[lv] -= 2;
+        lc[lv + 1] = (lc[lv + 1] || 0) + 1;
+        availMerges++;
+      }
+    }
+    if (availMerges > 0) {
+      mergeAllBtn.textContent = '一键合成(' + availMerges + '次)';
+      mergeAllBtn.disabled = false;
+      mergeAllBtn.className = 'btn-merge-all unlocked';
+    } else {
+      mergeAllBtn.textContent = '一键合成(无可合成)';
+      mergeAllBtn.disabled = true;
+      mergeAllBtn.className = 'btn-merge-all';
+    }
+  } else {
+    mergeAllBtn.textContent = '一键合成(最高Lv.40解锁)';
+    mergeAllBtn.disabled = true;
+    mergeAllBtn.className = 'btn-merge-all locked';
+  }
+
+  const buyBtn = document.getElementById('btn-buy-pad');
+  const next = getNextPadIndex();
+  if (next === -1) {
+    buyBtn.textContent = '弹跳板已全部购买';
+    buyBtn.disabled = true;
+    buyBtn.className = 'btn-buy-pad';
+  } else {
+    const c = getUnlockCost(next);
+    buyBtn.textContent = '购买弹跳板(' + c + '金)';
+    buyBtn.disabled = false;
+    buyBtn.className = gameState.coins >= c ? 'btn-buy-pad ready' : 'btn-buy-pad';
+  }
+
+  document.getElementById('pad-level-display').textContent = '弹跳板 Lv.' + gameState.bouncePadLevel;
+  const ub = document.getElementById('btn-upgrade');
+  const al = gameState.bouncePads.every(p => p.unlocked);
+  const uc = getUpgradeCost(gameState.bouncePadLevel);
+  if (!al) { ub.textContent = '升级弹跳板(需解锁9个)'; ub.disabled = true; }
+  else { ub.textContent = '升级弹跳板(' + uc + '金)'; ub.disabled = gameState.coins < uc; }
+}
+
+// ==================== 主循环 ====================
+function gameLoop() {
+  if (!gameState.running) return;
+  updatePhysics();
+
+  for (const ball of gameState.balls) {
+    if (ball.level >= 100) {
+      nextStage();
+      break;
+    }
+  }
+
+  render();
+  updateUI();
+  requestAnimationFrame(gameLoop);
+}
+
+// ==================== 启动 ====================
+function startGame() {
+  initBouncePads();
+  // 基础关：初始2个球
+  if (gameState.currentStage === 0) {
+    for (let i = 0; i < 2; i++) {
+      gameState.balls.push({
+        x: 370 + i * 60, y: 140,
+        vx: (i === 0 ? 3 : -2.5), vy: 0.5,
+        radius: 14, level: 1,
+        color: getBallColor(1), isActive: true
+      });
+    }
+  }
+  updateUI();
+  gameState.running = true;
+  gameLoop();
+}
+startGame();
+</script>
+</body>
+</html>
