@@ -112,6 +112,16 @@
     background: linear-gradient(135deg, #9933FF, #7722CC);
     color: white;
   }
+  .btn-spawn-upgrade {
+    background: #333;
+    color: #888;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  .btn-spawn-upgrade.ready {
+    background: linear-gradient(135deg, #ff6600, #ff4400);
+    color: white;
+  }
   .btn-buy-pad { background: #333; color: #888; }
   .btn-buy-pad.ready { background: linear-gradient(135deg, #2266DD, #1155CC); color: white; }
   .btn-spawn-batch { background: #333; color: #666; font-size: 11px; }
@@ -163,7 +173,7 @@
     }
 
     .btn-spawn, .btn-spawn-batch, .btn-merge-main, .btn-merge-all,
-    .btn-upgrade, .btn-buy-pad {
+    .btn-upgrade, .btn-buy-pad, .btn-spawn-upgrade {
       min-height: 38px;
       padding: 8px 10px;
       font-size: 12px;
@@ -211,7 +221,7 @@
     }
 
     .btn-spawn, .btn-spawn-batch, .btn-merge-main, .btn-merge-all,
-    .btn-upgrade, .btn-buy-pad {
+    .btn-upgrade, .btn-buy-pad, .btn-spawn-upgrade {
       padding: 7px 8px;
       font-size: 11px;
       min-height: 36px;
@@ -237,9 +247,12 @@
   </div>
   <div id="bottom-bar">
     <div class="bottom-row">
-      <button class="btn-spawn-batch locked" id="btn-spawn-batch" onclick="spawnBatch100()" disabled>招募100小球</button>
       <button class="btn-spawn" id="btn-spawn" onclick="spawnBall()">招募小球</button>
       <button class="btn-merge-main" id="btn-merge" onclick="doMerge()" disabled>合成</button>
+      <button class="btn-spawn-upgrade" id="btn-spawn-upgrade" onclick="upgradeSpawnLevel()">招募小球升级</button>
+    </div>
+    <div class="bottom-row">
+      <button class="btn-spawn-batch locked" id="btn-spawn-batch" onclick="spawnBatch100()" disabled>招募100小球</button>
       <button class="btn-merge-all locked" id="btn-merge-all" onclick="mergeAll()" disabled>一键合成</button>
     </div>
     <div class="bottom-row">
@@ -579,9 +592,11 @@ function nextStage() {
   gameState.balls = [];
   gameState.bouncePads = [];
   gameState.bouncePadLevel = 1;
+  gameState.spawnLevel = 1;
   gameState.particles = [];
   initBouncePads();
   for (let i = 0; i < 3; i++) spawnBall();
+  saveGame();
   showToast('进入 ' + getStageFullName(gameState.currentStage) + '！', 'success');
 }
 
@@ -593,8 +608,54 @@ const gameState = {
   bouncePads: [],
   particles: [],
   currentStage: 0,
+  spawnLevel: 1,
   running: true
 };
+
+// ==================== 持久缓存 ====================
+const SAVE_KEY = 'ball_merge_save_v1';
+
+function saveGame() {
+  try {
+    const data = {
+      coins: gameState.coins,
+      balls: gameState.balls.map(b => ({ x: b.x, y: b.y, vx: b.vx, vy: b.vy, level: b.level, radius: b.radius, isActive: b.isActive })),
+      bouncePadLevel: gameState.bouncePadLevel,
+      bouncePads: gameState.bouncePads.map(p => {
+        const base = { id: p.id, unlocked: p.unlocked, type: p.type };
+        if (p.type === 'curve') { base.tStart = p.tStart; base.tEnd = p.tEnd; }
+        if (p.type === 'wall') { base.side = p.side; base.yStart = p.yStart; base.yEnd = p.yEnd; }
+        if (p.type === 'letter') { base.x = p.x; base.y = p.y; }
+        return base;
+      }),
+      currentStage: gameState.currentStage,
+      spawnLevel: gameState.spawnLevel
+    };
+    localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+  } catch(e) {}
+}
+
+function loadGame() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    gameState.coins = data.coins || INITIAL_COINS;
+    gameState.balls = (data.balls || []).map(b => ({ ...b, color: getBallColor(b.level) }));
+    gameState.bouncePadLevel = data.bouncePadLevel || 1;
+    gameState.bouncePads = data.bouncePads || [];
+    gameState.currentStage = data.currentStage || 0;
+    gameState.spawnLevel = data.spawnLevel || 1;
+    gameState.particles = [];
+    // 字母关卡需要重建遮罩
+    if (gameState.currentStage > 0) {
+      updateLetterMask(getStageName(gameState.currentStage));
+    }
+    return true;
+  } catch(e) {
+    return false;
+  }
+}
 
 // ==================== 辅助函数 ====================
 function getBallColor(lv) { return COLOR_SEQUENCE[(lv - 1) % 7]; }
@@ -680,7 +741,8 @@ function spawnBall() {
     showToast('小球已达上限(100个)！', 'error');
     return;
   }
-  const cost = (gameState.balls.length + 1) * 4;
+  const sl = gameState.spawnLevel;
+  const cost = (gameState.balls.length + 1) * 4 * sl * sl;
   if (gameState.coins < cost) {
     showToast('金币不足！需要 ' + cost + ' 金币', 'error');
     return;
@@ -690,9 +752,31 @@ function spawnBall() {
   gameState.balls.push({
     x: sp.x, y: sp.y,
     vx: (Math.random() - 0.5) * 5, vy: 1,
-    radius: 14, level: 1,
-    color: getBallColor(1), isActive: true
+    radius: 14, level: sl,
+    color: getBallColor(sl), isActive: true
   });
+  saveGame();
+  updateUI();
+}
+
+function upgradeSpawnLevel() {
+  const curLv = gameState.spawnLevel;
+  const cost = curLv * curLv * 100000;
+  if (gameState.coins < cost) {
+    showToast('金币不足！需要 ' + cost.toLocaleString() + ' 金币', 'error');
+    return;
+  }
+  gameState.coins -= cost;
+  gameState.spawnLevel++;
+  // 清理低于新招募等级的小球
+  const before = gameState.balls.length;
+  gameState.balls = gameState.balls.filter(b => b.level >= gameState.spawnLevel);
+  const removed = before - gameState.balls.length;
+  if (removed > 0) {
+    showToast('已清理 ' + removed + ' 个低等级小球', 'info');
+  }
+  showToast('招募小球升级到 Lv.' + gameState.spawnLevel + '！', 'success');
+  saveGame();
   updateUI();
 }
 
@@ -723,6 +807,7 @@ function mergeBalls(level) {
   });
   spawnParticles(sp.x, sp.y, getBallColor(nl), 15);
   showToast('合成 Lv.' + nl + ' 小球！', 'success');
+  saveGame();
   updateUI();
 }
 
@@ -774,9 +859,10 @@ function spawnBatch100() {
     return;
   }
   const n = Math.min(100, MAX_BALLS - gameState.balls.length);
-  // 总成本 = sum_{i=1}^{n} (currentCount + i) * 4
+  // 总成本 = sum_{i=1}^{n} (currentCount + i) * 4 * spawnLevel^2
   const cur = gameState.balls.length;
-  const totalCost = 4 * (n * cur + n * (n + 1) / 2);
+  const sl = gameState.spawnLevel;
+  const totalCost = 4 * sl * sl * (n * cur + n * (n + 1) / 2);
   if (gameState.coins < totalCost) {
     showToast('金币不足！需要 ' + totalCost + ' 金币', 'error');
     return;
@@ -787,11 +873,12 @@ function spawnBatch100() {
     gameState.balls.push({
       x: sp.x, y: sp.y,
       vx: (Math.random() - 0.5) * 5, vy: 1,
-      radius: 14, level: 1,
-      color: getBallColor(1), isActive: true
+      radius: 14, level: sl,
+      color: getBallColor(sl), isActive: true
     });
   }
   showToast('成功招募 ' + n + ' 个小球！', 'success');
+  saveGame();
   updateUI();
 }
 
@@ -830,6 +917,7 @@ function mergeAll() {
   } else {
     showToast('一键合成完成！共合成 ' + merged + ' 次', 'success');
   }
+  saveGame();
   updateUI();
 }
 
@@ -856,6 +944,7 @@ function buyNextPad() {
   const pad = gameState.bouncePads.find(p => p.id === idx);
   pad.unlocked = true;
   showToast('弹跳板 #' + (idx + 1) + ' 已解锁！', 'success');
+  saveGame();
   updateUI();
 }
 
@@ -872,6 +961,7 @@ function upgradeAllBouncePads() {
   gameState.coins -= cost;
   gameState.bouncePadLevel++;
   showToast('弹跳板升级到 Lv.' + gameState.bouncePadLevel + '！', 'success');
+  saveGame();
   updateUI();
 }
 
@@ -1252,9 +1342,21 @@ function roundRect(x, y, w, h, r) {
 // ==================== UI ====================
 function updateUI() {
   const spawnBtn = document.getElementById('btn-spawn');
-  const spawnCost = (gameState.balls.length + 1) * 4;
+  const sl = gameState.spawnLevel;
+  const spawnCost = (gameState.balls.length + 1) * 4 * sl * sl;
   spawnBtn.textContent = '招募小球(' + spawnCost + '金)';
   spawnBtn.disabled = gameState.balls.length >= MAX_BALLS;
+
+  // 招募小球升级按钮
+  const upgBtn = document.getElementById('btn-spawn-upgrade');
+  if (upgBtn) {
+    const ul = gameState.spawnLevel;
+    const upCost = ul * ul * 100000;
+    const canUp = gameState.coins >= upCost;
+    upgBtn.textContent = '招募升级(Lv.' + ul + '→' + (ul + 1) + ' ' + upCost.toLocaleString() + '金)';
+    upgBtn.disabled = !canUp;
+    upgBtn.className = canUp ? 'btn-spawn-upgrade ready' : 'btn-spawn-upgrade';
+  }
 
   const mergeBtn = document.getElementById('btn-merge');
   if (mergeBtn) {
@@ -1278,7 +1380,7 @@ function updateUI() {
   if (highestLv >= 20) {
     const n = Math.min(100, MAX_BALLS - gameState.balls.length);
     const cur = gameState.balls.length;
-    const tc = 4 * (n * cur + n * (n + 1) / 2);
+    const tc = 4 * sl * sl * (n * cur + n * (n + 1) / 2);
     batchBtn.textContent = '招募' + n + '小球(' + tc + '金)';
     batchBtn.disabled = n <= 0 || gameState.coins < tc;
     batchBtn.className = 'btn-spawn-batch unlocked';
@@ -1345,6 +1447,8 @@ function updateUI() {
 }
 
 // ==================== 主循环 ====================
+// 定时自动保存（每10秒）+ 页面关闭时保存
+let saveTimer = 0;
 function gameLoop() {
   if (!gameState.running) return;
   updatePhysics();
@@ -1358,21 +1462,36 @@ function gameLoop() {
 
   render();
   updateUI();
+
+  // 每10秒自动保存
+  saveTimer++;
+  if (saveTimer >= 600) {
+    saveTimer = 0;
+    saveGame();
+  }
   requestAnimationFrame(gameLoop);
 }
+window.addEventListener('beforeunload', () => saveGame());
 
 // ==================== 启动 ====================
 function startGame() {
-  initBouncePads();
-  // 基础关：初始2个球
-  if (gameState.currentStage === 0) {
-    for (let i = 0; i < 2; i++) {
-      gameState.balls.push({
-        x: 370 + i * 60, y: 140,
-        vx: (i === 0 ? 3 : -2.5), vy: 0.5,
-        radius: 14, level: 1,
-        color: getBallColor(1), isActive: true
-      });
+  const loaded = loadGame();
+  if (loaded) {
+    if (gameState.currentStage === 0) {
+      initBouncePads();
+    }
+    showToast('游戏已恢复（第' + gameState.currentStage + '关）', 'info');
+  } else {
+    initBouncePads();
+    if (gameState.currentStage === 0) {
+      for (let i = 0; i < 2; i++) {
+        gameState.balls.push({
+          x: 370 + i * 60, y: 140,
+          vx: (i === 0 ? 3 : -2.5), vy: 0.5,
+          radius: 14, level: 1,
+          color: getBallColor(1), isActive: true
+        });
+      }
     }
   }
   updateUI();
