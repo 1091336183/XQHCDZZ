@@ -356,6 +356,58 @@
     cursor: pointer; background: linear-gradient(135deg,#ff4444,#cc0000); color: #fff; letter-spacing: 1px;
   }
   .alert-card .btn-alert:hover { box-shadow: 0 0 16px rgba(255,68,68,0.4); }
+  /* 天赋面板 */
+  #talent-panel {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.85); z-index: 1001;
+  }
+  #talent-panel.show { display: flex; }
+  .talent-card {
+    text-align: center; max-width: 440px; width: 90%; padding: 25px 20px;
+    background: #12122a; border: 1px solid #2a2a45; border-radius: 16px;
+    max-height: 95vh; overflow-y: auto;
+  }
+  .talent-card h2 { font-size: 20px; color: #ffd700; margin-bottom: 4px; }
+  .talent-card .diamond-display { font-size: 16px; color: #00ccff; margin-bottom: 16px; }
+  .talent-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 0; border-bottom: 1px solid #1a1a35; gap: 8px;
+  }
+  .talent-row .tinfo { text-align: left; flex: 1; }
+  .talent-row .tname { font-size: 13px; color: #ccc; }
+  .talent-row .tval { font-size: 11px; color: #888; }
+  .talent-row .tbtn {
+    padding: 6px 12px; border: 1px solid #9966ff; border-radius: 6px;
+    background: #1a1a35; color: #9966ff; cursor: pointer; font-size: 11px; white-space: nowrap;
+  }
+  .talent-row .tbtn:disabled { border-color: #444; color: #555; cursor: not-allowed; }
+  .talent-row .tbtn:hover:not(:disabled) { background: #2a2a55; }
+  .talent-hint { font-size: 11px; color: #ff9966; margin-top: 12px; line-height: 1.6; }
+  .talent-card .btn-back { margin-top: 16px; }
+  /* 退出按钮（挑战模式） */
+  .btn-quit {
+    position: absolute; top: 6px; right: 6px;
+    padding: 4px 10px; border: 1px solid #ff4444; border-radius: 4px;
+    background: rgba(255,68,68,0.15); color: #ff4444; cursor: pointer;
+    font-size: 11px; z-index: 50;
+  }
+  .btn-quit:hover { background: rgba(255,68,68,0.3); }
+  /* 钻石指标 */
+  .diamond-badge {
+    display: inline-flex; align-items: center; gap: 3px;
+    font-size: 12px; color: #00ccff;
+  }
+  .diamond-badge::before { content: '◆'; }
+  /* 模式选择页钻石 */
+  #home-diamonds { text-align: center; margin-bottom: 12px; font-size: 14px; }
+  .btn-talents {
+    display: block; width: 100%; padding: 10px; border: none; border-radius: 8px;
+    background: linear-gradient(135deg, #5588cc, #336699); color: #fff;
+    font-size: 14px; font-weight: bold; cursor: pointer; margin-bottom: 10px;
+    letter-spacing: 1px; transition: all 0.2s;
+  }
+  .btn-talents:hover { box-shadow: 0 0 16px rgba(85,136,204,0.4); }
   /* 顶部返回按钮 */
   #btn-back-home {
     position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
@@ -367,11 +419,27 @@
 </style>
 </head>
 <body>
+<!-- 天赋面板 -->
+<div id="talent-panel">
+  <div class="talent-card">
+    <h2>天赋加成</h2>
+    <div class="diamond-display" id="talent-diamonds">钻石: 0个</div>
+    <div id="talent-rows"></div>
+    <div class="talent-hint">
+      ※ 天赋加成在<b>个人和挑战模式</b>中均生效<br>
+      ※ 升级消耗钻石，等级越高消耗越多<br>
+      ※ 初始小球数指进入新关卡时的默认小球数量
+    </div>
+    <button class="btn-vic btn-back" onclick="closeTalentPanel()">返回首页</button>
+  </div>
+</div>
+
 <!-- 模式选择覆盖层 -->
 <div id="mode-overlay">
   <div id="mode-panel">
     <h1>小球合成大作战</h1>
     <p class="sub">选择你的战斗模式</p>
+    <button class="btn-talents" onclick="openTalentPanel()">天赋加成</button>
     <button class="btn-m personal" onclick="selectMode('personal')">个人模式</button>
     <button class="btn-m challenge" onclick="showChallengePanel()">挑战模式</button>
     <div id="challenge-config">
@@ -425,6 +493,7 @@
   <div id="top-bar">
     <button id="btn-back-home" onclick="backToHome()">← 首页</button>
     <span id="title">小球合成大作战</span>
+    <button class="btn-quit" id="btn-quit" style="display:none" onclick="quitChallenge()">退出</button>
   </div>
   <div id="canvas-wrap">
     <canvas id="gameCanvas"></canvas>
@@ -901,9 +970,12 @@ function getStageFullName(stage) {
 function nextStage() {
   if (gameState.currentStage >= 26) {
     gameState.currentStage = 0;
-    showToast('已通关！回到第0关继续挑战', 'success');
+    addDiamond(2);
+    showToast('已通关！获得2钻石（共' + diamonds + '钻石）回到第0关继续挑战', 'success');
   } else {
     gameState.currentStage++;
+    addDiamond(2);
+    showToast('恭喜通关！获得2钻石（共' + diamonds + '钻石）进入第' + gameState.currentStage + '关', 'success');
   }
   gameState.balls = [];
   gameState.bouncePads = [];
@@ -958,6 +1030,25 @@ const gameState = {
 
 // ==================== 持久缓存 ====================
 const SAVE_KEY = 'ball_merge_save_v1';
+const DIAMOND_KEY = 'ball_merge_diamonds';
+const TALENT_KEY = 'ball_merge_talents';
+
+// 天赋定义: { key, name, max, unit, perLv }
+const TALENTS = [
+  { key: 'gold', name: '全局金币倍数', max: 100, unit: '%', perLv: 1 },
+  { key: 'speed', name: '战斗速度', max: 100, unit: '%', perLv: 0.01 },
+  { key: 'balls', name: '初始小球数', max: 100, unit: '个', perLv: 1 },
+  { key: 'costDown', name: '升级费用减少', max: 100, unit: '%', perLv: 0.1 },
+];
+let diamonds = parseInt(localStorage.getItem(DIAMOND_KEY)) || 0;
+let talents = JSON.parse(localStorage.getItem(TALENT_KEY) || '{}');
+// 确保每个天赋都有默认值
+TALENTS.forEach(t => { if (!(t.key in talents)) talents[t.key] = 0; });
+function saveDiamonds() { localStorage.setItem(DIAMOND_KEY, diamonds); }
+function saveTalents() { localStorage.setItem(TALENT_KEY, JSON.stringify(talents)); }
+function addDiamond(n) { diamonds = (diamonds || 0) + (n || 1); saveDiamonds(); }
+function getTalentCost(key) { return (talents[key] || 0) + 1; } // 当前等级+1 = 升级所需钻石数
+function hasTalent(key) { return (talents[key] || 0) > 0; }
 
 function saveGame() {
   if (gameState.mode === 'challenge') return; // 挑战模式不保存
@@ -1132,6 +1223,11 @@ function showAlert(msg) {
 }
 function closeAlert() {
   document.getElementById('alert-dialog').classList.remove('show');
+  const action = document.getElementById('alert-dialog').getAttribute('data-action');
+  if (action === 'quit') {
+    document.getElementById('alert-dialog').removeAttribute('data-action');
+    backToHome();
+  }
 }
 
 // ==================== 小球操作 ====================
@@ -1696,7 +1792,6 @@ function computerAI() {
     batchCost = n * n * 4 * cs.spawnLevel * cs.spawnLevel;
   }
 
-  // 10种操作定义：id, cost(排序用), available, fn
   const defs = [
     { id: 1, cost: spawnUpCost, available: cs.coins >= spawnUpCost, fn: computerUpgradeSpawn },
     { id: 2, cost: spawnC, available: canRecruit && cs.coins >= spawnC, fn: computerSpawnBall },
@@ -1712,44 +1807,88 @@ function computerAI() {
   const actMap = {};
   defs.forEach(d => actMap[d.id] = d);
 
-  // 自定义模式(diff=4)：优先用自定义策略，否则全部10种轮流
-  if (diff === 4) {
-    const custom = gameState.customStrategy;
-    if (custom && custom.length === 3) {
-      // 使用自定义三级优先级
-      for (const tier of custom) {
-        if (!tier.length) continue;
-        const avail = tier.map(id => actMap[id]).filter(a => a && a.available);
-        avail.sort((a, b) => a.cost - b.cost);
-        for (const a of avail) { a.fn(); return; }
-      }
+  // 辅助：按tiers执行（每组按cost升序）
+  function execTiers(tiers) {
+    for (const tier of tiers) {
+      if (!tier || !tier.length) continue;
+      const avail = tier.map(id => actMap[id]).filter(a => a && a.available);
+      avail.sort((a, b) => a.cost - b.cost);
+      for (const a of avail) { a.fn(); return true; }
     }
-    // 默认：全部10种轮流
+    return false;
+  }
+
+  // 辅助：轮询全部10种
+  function execRoundRobin() {
     if (!cs._aiCursor) cs._aiCursor = 0;
     for (let i = 0; i < 10; i++) {
       const idx = (cs._aiCursor + i) % 10;
-      if (defs[idx].available) { defs[idx].fn(); cs._aiCursor = (idx + 1) % 10; return; }
+      if (defs[idx].available) { defs[idx].fn(); cs._aiCursor = (idx + 1) % 10; return true; }
     }
     cs._aiCursor = (cs._aiCursor + 1) % 10;
-    return;
+    return false;
   }
 
-  // 固定难度策略：每组内成本低的优先
-  const strategy = {
-    0: [[2,3], [4,1], [5,6]],           // 普通
-    1: [[3,2], [1,4], [5,6]],           // 困难
-    2: [[3,2], [1,4], [5,6]],           // 地狱
-    3: [[1,2], [3,4], [5,6]],           // 自虐
-  };
-  const tiers = strategy[diff] || strategy[0];
-
-  for (const tier of tiers) {
-    const avail = tier.map(id => actMap[id]).filter(a => a.available);
-    avail.sort((a, b) => a.cost - b.cost);
-    for (const a of avail) {
-      a.fn();
-      return;
+  // --- 确定招募阈值 ---
+  function getRecruitThreshold() {
+    if (diff === 4) { // 自定义
+      const ratio = Math.round(gameState.computerCoinMult * 100);
+      if (ratio <= 100) return 50;       // 5%~100%
+      if (ratio <= 500) return 40;       // 101%~500%
+      if (ratio <= 1000) return 30;      // 501%~1000%
+      if (ratio <= 50000) return 20;     // 1001%~50000%
+      if (ratio <= 70000) return 10;     // 50001%~70000%
+      return 5;                          // 70001%~100000%
     }
+    return {0:50, 1:40, 2:20, 3:10}[diff] || 50;
+  }
+
+  const recruitThreshold = getRecruitThreshold();
+  const inRecruitPhase = cs.balls.length < recruitThreshold;
+
+  // --- 获取当前模式的后备策略 ---
+  function getFallbackTiers() {
+    if (diff === 4) {
+      // 自定义模式：用玩家设定的策略，没有则轮询
+      const custom = gameState.customStrategy;
+      if (custom && custom.length === 3 && custom.some(t => t.length > 0)) return custom;
+      return null; // 轮询
+    }
+    const strategy = {
+      0: [[2,3], [4,1], [5,6]],       // 普通
+      1: [[3,2], [1,4], [5,6]],       // 困难
+      2: [[3,2], [1,4], [5,6]],       // 地狱
+      3: [[1,2], [3,4], [5,6]],       // 自虐
+    };
+    return strategy[diff] || strategy[0];
+  }
+
+  // --- 金钱够 → P0优先，不够 → 后备策略 ---
+  const topAct = inRecruitPhase ? actMap[2] : actMap[1]; // P0:招募 或 升级小球
+  const moneyEnough = topAct && topAct.available;
+
+  if (moneyEnough) {
+    // 金钱充足：执行P0（招募小球 或 升级小球）+ 同步购买/升级跳板
+    if (inRecruitPhase) {
+      // P0 = 招募小球(oper 2)
+      if (actMap[2] && actMap[2].available) actMap[2].fn();
+    } else {
+      // 超过阈值后 P0 = 升级小球(oper 1)
+      if (actMap[1] && actMap[1].available) actMap[1].fn();
+    }
+    // 金币足够时同步：购买跳板 + 升级跳板（与P0平行，不互斥）
+    if (actMap[3] && actMap[3].available) actMap[3].fn();
+    if (actMap[4] && actMap[4].available) actMap[4].fn();
+    // 再走后备策略执行其余操作
+    const fallback = getFallbackTiers();
+    if (fallback) { execTiers(fallback); }
+    else { execRoundRobin(); }
+    return;
+  } else {
+    // 金钱不足：优先执行玩家选择的规则（后备策略）
+    const fallback = getFallbackTiers();
+    if (fallback) { if (execTiers(fallback)) return; }
+    else { execRoundRobin(); return; }
   }
 }
 
@@ -2649,12 +2788,14 @@ function gameLoop() {
           if (gameState.challengeWinner === 'player') {
             titleEl.textContent = '玩家胜利！';
             titleEl.style.color = '#ffd700';
-            descEl.textContent = '恭喜！你率先达到 Lv.100\n击败了电脑！';
+            addDiamond(2);
+            descEl.textContent = '恭喜！你率先达到 Lv.100\n击败了电脑！获得2钻石（共' + diamonds + '钻石）';
           } else {
             titleEl.textContent = '电脑胜利！';
             titleEl.style.color = '#ff4444';
             descEl.textContent = '电脑率先达到 Lv.100\n再接再厉！';
           }
+          document.getElementById('btn-quit').style.display = 'none';
           document.getElementById('victory-dialog').classList.add('show');
         }
     }
@@ -2936,6 +3077,7 @@ function backToHome() {
   gameState.playerCoinMult = 1.0;
   gameState.computerCoinMult = 1.0;
   document.getElementById('victory-dialog').classList.remove('show');
+  document.getElementById('btn-quit').style.display = 'none';
   document.getElementById('mode-overlay').classList.remove('hidden');
   document.getElementById('challenge-config').classList.remove('show');
 }
@@ -2943,6 +3085,52 @@ function onVictoryConfirm() {
   document.getElementById('victory-dialog').classList.remove('show');
   backToHome();
 }
+
+// ===== 天赋系统 =====
+function openTalentPanel() {
+  document.getElementById('talent-diamonds').textContent = '钻石: ' + diamonds + '个';
+  renderTalentRows();
+  document.getElementById('talent-panel').classList.add('show');
+}
+function closeTalentPanel() {
+  document.getElementById('talent-panel').classList.remove('show');
+}
+function renderTalentRows() {
+  const container = document.getElementById('talent-rows');
+  let h = '';
+  TALENTS.forEach(t => {
+    const lv = talents[t.key] || 0;
+    const cost = getTalentCost(t.key);
+    const val = (lv * t.perLv).toFixed(2);
+    const maxed = lv >= t.max;
+    h += `<div class="talent-row">
+      <div class="tinfo"><div class="tname">${t.name}</div><div class="tval">Lv.${lv} (+${val}${t.unit})</div></div>
+      <button class="tbtn" onclick="upgradeTalent('${t.key}')" ${maxed || diamonds < cost ? 'disabled' : ''}>${maxed ? '已满' : '升级 ' + cost + '◆'}</button>
+    </div>`;
+  });
+  container.innerHTML = h;
+}
+function upgradeTalent(key) {
+  const t = TALENTS.find(x => x.key === key);
+  if (!t) return;
+  const lv = talents[key] || 0;
+  if (lv >= t.max) { showToast(t.name + '已满级', 'error'); return; }
+  const cost = getTalentCost(key);
+  if (diamonds < cost) { showToast('钻石不足！需要' + cost + '钻石', 'error'); return; }
+  diamonds -= cost;
+  talents[key] = lv + 1;
+  saveDiamonds(); saveTalents();
+  renderTalentRows();
+  document.getElementById('talent-diamonds').textContent = '钻石: ' + diamonds + '个';
+  showToast(t.name + ' 升级到 Lv.' + (lv + 1) + '！', 'info');
+}
+
+// ===== 挑战退出 =====
+function quitChallenge() {
+  showAlert('退出挑战即判定为输掉比赛！\n确认退出？');
+  document.getElementById('alert-dialog').setAttribute('data-action', 'quit');
+}
+
 function selectMode(mode) {
   document.getElementById('mode-overlay').classList.add('hidden');
   if (mode === 'personal') {
@@ -2987,6 +3175,8 @@ function startChallengeFromPanel() {
     }
   }
   document.getElementById('mode-overlay').classList.add('hidden');
+  document.getElementById('victory-dialog').classList.remove('show');
+  document.getElementById('btn-quit').style.display = '';
   initChallengeMode(stageIndex, diff, playerMult, computerMult, customTiers);
   updateUI();
   gameState.running = true;
@@ -3006,6 +3196,7 @@ function startGame() {
   if (urlMode === 'challenge' && urlStage >= 1 && urlStage <= 26 && urlDiff >= 0 && urlDiff <= 4) {
     // 有URL参数，直接启动挑战模式
     document.getElementById('mode-overlay').classList.add('hidden');
+    document.getElementById('btn-quit').style.display = '';
     const urlPlayMult = parseFloat(params.get('pm')) || null;
     const urlCompMult = parseFloat(params.get('cm')) || null;
     initChallengeMode(urlStage, urlDiff, urlPlayMult, urlCompMult);
