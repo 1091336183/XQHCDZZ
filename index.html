@@ -13,6 +13,7 @@
     font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
     color: #fff;
     user-select: none;
+    touch-action: manipulation;
   }
   #game-container {
     width: 100%; height: 100%;
@@ -89,6 +90,7 @@
     max-width: 100%;
     max-height: 100%;
     object-fit: contain;
+    touch-action: manipulation;
   }
   #bottom-bar {
     display: flex;
@@ -262,6 +264,7 @@
     text-align: center;
     max-width: 460px; width: 90%; padding: 30px 20px;
     background: #12122a; border: 1px solid #2a2a45; border-radius: 16px;
+    max-height: 95vh; overflow-y: auto;
   }
   #mode-panel h1 { font-size: 26px; color: #ffd700; margin-bottom: 4px; letter-spacing: 2px; }
   #mode-panel .sub { font-size: 13px; color: #666; margin-bottom: 24px; }
@@ -306,12 +309,12 @@
   #custom-strategy.show { display: block; }
   .strat-row { margin-bottom: 8px; }
   .strat-row .slabel { font-size: 11px; color: #9966ff; margin-bottom: 3px; display: block; }
-  .strat-opts { display: flex; flex-wrap: wrap; gap: 3px; }
+  .strat-opts { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; }
   .strat-opts label {
-    display: inline-flex; align-items: center; gap: 2px;
-    padding: 2px 6px; border: 1px solid #2a2a45; border-radius: 4px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 2px;
+    padding: 4px 2px; border: 1px solid #2a2a45; border-radius: 4px;
     font-size: 10px; color: #888; cursor: pointer; background: #0a0a1a;
-    white-space: nowrap;
+    white-space: nowrap; text-align: center;
   }
   .strat-opts label.checked { border-color: #9966ff; color: #9966ff; background: #1a1a35; }
   .strat-opts input { display: none; }
@@ -382,15 +385,15 @@
       </div>
       <div id="custom-strategy">
         <div class="strat-row">
-          <span class="slabel">第一优先（2~3个）:</span>
+          <span class="slabel">第一优先（1~3个，不重复）:</span>
           <div class="strat-opts" id="strat-p1"></div>
         </div>
         <div class="strat-row">
-          <span class="slabel">第二优先（2~3个）:</span>
+          <span class="slabel">第二优先（1~3个，不重复）:</span>
           <div class="strat-opts" id="strat-p2"></div>
         </div>
         <div class="strat-row">
-          <span class="slabel">第三优先（2~3个）:</span>
+          <span class="slabel">第三优先（1~3个，不重复）:</span>
           <div class="strat-opts" id="strat-p3"></div>
         </div>
         <button class="btn-strat-default" onclick="resetCustomStrategy()">默认（轮流所有功能）</button>
@@ -2863,10 +2866,9 @@ function selDiff(d) {
 }
 
 // ===== 自定义策略配置 =====
-const STRAT_LABELS = {
-  1:'招募升级',2:'招募小球',3:'购买跳板',4:'升级跳板',5:'一键升级',
-  6:'一键合成',7:'招募100球',8:'一键合成',9:'升级弹跳板',10:'合成'
-};
+const STRAT_LABELS = ['', '招募升级','招募','买跳板','升级跳板','一键升级','一键合成','招募100','一键合成','升级弹板','合成'];
+// 短标签用于显示，完整名称用 title
+const STRAT_FULL = ['', '招募升级','招募小球','购买跳板','升级跳板','一键升级（弹跳板）','一键合成升级','招募100小球','一键合成（全部）','升级弹跳板','合成'];
 let customStratSelected = {}; // { 'p1': {1:true,2:true,3:true}, 'p2':{...}, 'p3':{...} }
 
 function renderCustomStrategy() {
@@ -2876,7 +2878,7 @@ function renderCustomStrategy() {
     let h = '';
     for (let i = 1; i <= 10; i++) {
       const sel = customStratSelected[pid][i];
-      h += `<label class="${sel?'checked':''}" onclick="toggleStrat('${pid}',${i})">${i}</label>`;
+      h += `<label class="${sel?'checked':''}" onclick="toggleStrat('${pid}',${i})" title="${i}.${STRAT_FULL[i]}">${i}.${STRAT_LABELS[i]}</label>`;
     }
     container.innerHTML = h;
   });
@@ -2888,6 +2890,12 @@ function toggleStrat(pid, id) {
   else {
     const cnt = Object.values(customStratSelected[pid]).filter(Boolean).length;
     if (cnt >= 3) { showToast('每个优先级最多选3个', 'error'); return; }
+    // 从其他优先级移除（不可重复选）
+    ['p1','p2','p3'].forEach(op => {
+      if (op !== pid && customStratSelected[op] && customStratSelected[op][id]) {
+        customStratSelected[op][id] = false;
+      }
+    });
     customStratSelected[pid][id] = true;
   }
   renderCustomStrategy();
@@ -2972,6 +2980,11 @@ function startChallengeFromPanel() {
     playerMult = pv / 100;
     computerMult = cv / 100;
     customTiers = getCustomStrategyTiers();
+    // 验证：使用自定义策略时，每个优先级至少选1个
+    if (customTiers && customTiers.some(t => t.length === 0)) {
+      showAlert('使用自定义策略时，每个优先级至少选1个功能！\n或点击"默认"使用轮流模式');
+      return;
+    }
   }
   document.getElementById('mode-overlay').classList.add('hidden');
   initChallengeMode(stageIndex, diff, playerMult, computerMult, customTiers);
