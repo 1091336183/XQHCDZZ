@@ -984,9 +984,10 @@ function nextStage() {
   gameState.particles = [];
   gameState.coins = 0;
   initBouncePads();
-  // 在默认弹跳板位置生成3个1级小球
+  // 在默认弹跳板位置生成小球（天赋加成额外球数）
   const sp = getDefaultPadPosition();
-  for (let i = 0; i < 3; i++) {
+  const extraBalls = getTalentExtraBalls();
+  for (let i = 0; i < 3 + extraBalls; i++) {
     gameState.balls.push({
       x: sp.x + (Math.random() - 0.5) * 40,
       y: sp.y + (Math.random() - 0.5) * 20,
@@ -1071,6 +1072,15 @@ function saveGame() {
   } catch(e) {}
 }
 
+// ===== 天赋加成计算 =====
+function getTalentGoldMult() { return 1 + (talents.gold || 0) * 0.01; }
+function getTalentSpeedMult() { return 1 + (talents.speed || 0) * 0.0001; }
+function getTalentExtraBalls() { return talents.balls || 0; }
+function getTalentCostReduction() { return 1 - (talents.costDown || 0) * 0.001; }
+function deductCoins(amount) {
+  gameState.coins -= Math.ceil(amount * getTalentCostReduction());
+}
+
 function loadGame() {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
@@ -1115,7 +1125,10 @@ function getUpgradeCost(curLv) {
   if (curLv === 2) return 15000;
   return 10000 + (curLv - 1) * 5000;
 }
-function addCoins(amt) { gameState.coins += Math.round(amt * gameState.playerCoinMult * 100000) / 100000; }
+function addCoins(amt) {
+  const base = amt * gameState.playerCoinMult * getTalentGoldMult();
+  gameState.coins += Math.round(base * 100000) / 100000;
+}
 
 function getHighestLevel() {
   if (gameState.balls.length === 0) return 1;
@@ -1257,7 +1270,7 @@ function spawnBall() {
     showToast('金币不足！需要 ' + formatGold(cost) + ' 金币', 'error');
     return;
   }
-  gameState.coins -= cost;
+  deductCoins(cost);
   const sp = getValidSpawnPoint();
   gameState.balls.push({
     x: sp.x, y: sp.y,
@@ -1276,7 +1289,7 @@ function upgradeSpawnLevel() {
     showToast('金币不足！需要 ' + formatGold(cost) + ' 金币', 'error');
     return;
   }
-  gameState.coins -= cost;
+  deductCoins(cost);
   gameState.spawnLevel++;
   // 清理低于新招募等级的小球
   const before = gameState.balls.length;
@@ -1303,8 +1316,8 @@ function upgradeSpawnLevel() {
 
 function upgradeSpawnLevelMax() {
   let count = 0;
-  while (gameState.coins >= (gameState.spawnLevel * gameState.spawnLevel * 100000)) {
-    gameState.coins -= gameState.spawnLevel * gameState.spawnLevel * 100000;
+  while (gameState.coins >= Math.ceil(gameState.spawnLevel * gameState.spawnLevel * 100000 * getTalentCostReduction())) {
+    deductCoins(gameState.spawnLevel * gameState.spawnLevel * 100000);
     gameState.spawnLevel++;
     count++;
   }
@@ -1345,7 +1358,7 @@ function mergeBalls(level) {
     showToast('金币不足！需要 ' + formatGold(cost) + ' 金币', 'error');
     return;
   }
-  gameState.coins -= cost;
+  deductCoins(cost);
   const [b1, b2] = sameLevel;
   const midX = (b1.x + b2.x) / 2, midY = (b1.y + b2.y) / 2;
 
@@ -1421,7 +1434,7 @@ function spawnBatch100() {
     showToast('金币不足！需要 ' + formatGold(totalCost) + ' 金币', 'error');
     return;
   }
-  gameState.coins -= totalCost;
+  deductCoins(totalCost);
   for (let i = 0; i < n; i++) {
     const sp = getValidSpawnPoint();
     gameState.balls.push({
@@ -1453,7 +1466,7 @@ function mergeAll() {
     if (sameLevel.length < 2) break;
     const [b1, b2] = sameLevel;
     const midX = (b1.x + b2.x) / 2, midY = (b1.y + b2.y) / 2;
-    gameState.coins -= cost;
+    deductCoins(cost);
     gameState.balls = gameState.balls.filter(b => b !== b1 && b !== b2);
     const nl = level + 1;
     const sp = (gameState.currentStage > 0 && !maskAlpha(midX, midY)) ? getValidSpawnPoint() : { x: midX, y: midY };
@@ -1494,7 +1507,7 @@ function buyNextPad() {
     showToast('金币不足！需要 ' + formatGold(cost) + ' 金币', 'error');
     return;
   }
-  gameState.coins -= cost;
+  deductCoins(cost);
   const pad = gameState.bouncePads.find(p => p.id === idx);
   pad.unlocked = true;
   showToast('弹跳板 #' + (idx + 1) + ' 已解锁！', 'success');
@@ -1516,7 +1529,7 @@ function upgradeAllBouncePads() {
     showToast('金币不足！需要 ' + formatGold(cost) + ' 金币', 'error');
     return;
   }
-  gameState.coins -= cost;
+  deductCoins(cost);
   gameState.bouncePadLevel++;
   showToast('弹跳板升级到 Lv.' + gameState.bouncePadLevel + '！', 'success');
   saveGame();
@@ -1533,8 +1546,8 @@ function upgradeAllBouncePadsMax() {
     return;
   }
   let count = 0;
-  while (gameState.bouncePadLevel < 10000 && gameState.coins >= getUpgradeCost(gameState.bouncePadLevel)) {
-    gameState.coins -= getUpgradeCost(gameState.bouncePadLevel);
+  while (gameState.bouncePadLevel < 10000 && gameState.coins >= Math.ceil(getUpgradeCost(gameState.bouncePadLevel) * getTalentCostReduction())) {
+    deductCoins(getUpgradeCost(gameState.bouncePadLevel));
     gameState.bouncePadLevel++;
     count++;
   }
@@ -2046,8 +2059,8 @@ function updatePhysics() {
   for (const ball of gameState.balls) {
     if (!ball.isActive) continue;
     ball.vy += GRAVITY;
-    ball.x += ball.vx;
-    ball.y += ball.vy;
+    ball.x += ball.vx * getTalentSpeedMult();
+    ball.y += ball.vy * getTalentSpeedMult();
     ball._wallRewarded = false;
     ball._letterRewarded = false;
 
@@ -2109,8 +2122,8 @@ function updateChallengePhysics() {
   for (const ball of gameState.balls) {
     if (!ball.isActive) continue;
     ball.vy += GRAVITY;
-    ball.x += ball.vx;
-    ball.y += ball.vy;
+    ball.x += ball.vx * getTalentSpeedMult();
+    ball.y += ball.vy * getTalentSpeedMult();
     ball._letterRewarded = false;
 
     // 玩家球边界约束：限制在左半区0-400
@@ -2361,34 +2374,40 @@ function render() {
   ctx.fillStyle = 'rgba(0,0,0,0.55)';
   ctx.strokeStyle = 'rgba(255,255,255,0.1)';
   ctx.lineWidth = 1;
-  roundRect(12, 8, 198, 120, 6);
+  roundRect(12, 8, 198, 132, 6);
 
   ctx.fillStyle = '#ff9900';
   ctx.font = 'bold 14px "Microsoft YaHei", Arial';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
-  ctx.fillText(getStageFullName(gameState.currentStage), 22, 16);
+  ctx.fillText(getStageFullName(gameState.currentStage), 22, 15);
 
   ctx.fillStyle = '#ffd700';
   ctx.font = 'bold 14px "Microsoft YaHei", Arial';
-  ctx.fillText('金币: ' + formatGold(gameState.coins), 22, 38);
+  ctx.fillText('金币: ' + formatGold(gameState.coins), 22, 35);
 
   ctx.fillStyle = '#aaa';
   ctx.font = '12px "Microsoft YaHei", Arial';
-  ctx.fillText('小球: ' + gameState.balls.length + '/' + MAX_BALLS, 22, 58);
+  ctx.fillText('小球: ' + gameState.balls.length + '/' + MAX_BALLS, 22, 55);
 
   ctx.fillStyle = '#ff8800';
   ctx.font = 'bold 12px "Microsoft YaHei", Arial';
-  ctx.fillText('最高: Lv.' + highestLv, 22, 78);
+  ctx.fillText('最高: Lv.' + highestLv, 22, 72);
 
   ctx.fillStyle = '#ffaa44';
   ctx.font = '10px "Microsoft YaHei", Arial';
-  ctx.fillText('(所得金币×' + getCoinMultiplier().toFixed(2) + ')', 22, 94);
+  const goldMult = getCoinMultiplier() * getTalentGoldMult();
+  ctx.fillText('(所得金币×' + goldMult.toFixed(2) + ')', 22, 88);
+  if (getTalentGoldMult() > 1 || getTalentExtraBalls() > 0 || getTalentCostReduction() < 1 || (talents.speed || 0) > 0) {
+    ctx.fillStyle = '#9966ff';
+    ctx.font = '9px "Microsoft YaHei", Arial';
+    ctx.fillText('天赋: 金币×' + getTalentGoldMult().toFixed(2) + ' 球+' + getTalentExtraBalls() + ' 速+' + (talents.speed * 0.01).toFixed(2) + '% 费-' + (talents.costDown * 0.1).toFixed(1) + '%', 22, 102);
+  }
 
   ctx.fillStyle = '#66ccff';
   ctx.font = '11px "Microsoft YaHei", Arial';
   const nextName = gameState.currentStage >= 26 ? '→ 100级循环回第0关' : ('→ 100级进入' + getStageFullName(gameState.currentStage + 1));
-  ctx.fillText(nextName, 22, 112);
+  ctx.fillText(nextName, 22, 114);
 }
 
 // 挑战模式渲染
@@ -2572,7 +2591,8 @@ function renderChallenge() {
 
   ctx.fillStyle = '#ffaa44';
   ctx.font = '10px "Microsoft YaHei", Arial';
-  ctx.fillText('(所得×' + (getCoinMultiplier() * gameState.playerCoinMult).toFixed(2) + ')', 22, 78);
+  const chGoldMult = (getCoinMultiplier() * gameState.playerCoinMult * getTalentGoldMult());
+  ctx.fillText('(所得×' + chGoldMult.toFixed(2) + ')', 22, 78);
 
   ctx.fillStyle = '#66ccff';
   ctx.font = '10px "Microsoft YaHei", Arial';
@@ -2580,7 +2600,13 @@ function renderChallenge() {
 
   ctx.fillStyle = '#9966ff';
   ctx.font = '9px "Microsoft YaHei", Arial';
-  ctx.fillText('金币比: 玩家' + (gameState.playerCoinMult * 100).toFixed(0) + '% / 电脑' + (gameState.computerCoinMult * 100).toFixed(0) + '%', 22, 112);
+  ctx.fillText('金币比: 玩家' + (gameState.playerCoinMult * 100).toFixed(0) + '% / 电脑' + (gameState.computerCoinMult * 100).toFixed(0) + '%', 22, 106);
+
+  if (getTalentGoldMult() > 1 || getTalentExtraBalls() > 0 || getTalentCostReduction() < 1 || (talents.speed || 0) > 0) {
+    ctx.fillStyle = '#aa77ff';
+    ctx.font = '9px "Microsoft YaHei", Arial';
+    ctx.fillText('天赋: 金币×' + getTalentGoldMult().toFixed(2) + ' 球+' + getTalentExtraBalls() + ' 速+' + (talents.speed * 0.01).toFixed(2) + '% 费-' + (talents.costDown * 0.1).toFixed(1) + '%', 22, 122);
+  }
 
   // ===== 右上角：电脑面板 =====
   let cHighest = 0;
@@ -2640,7 +2666,8 @@ function roundRect(x, y, w, h, r) {
 function updateUI() {
   const spawnBtn = document.getElementById('btn-spawn');
   const sl = gameState.spawnLevel;
-  const spawnCost = (gameState.balls.length + 1) * 4 * sl * sl;
+  const rawSpawnCost = (gameState.balls.length + 1) * 4 * sl * sl;
+  const spawnCost = Math.ceil(rawSpawnCost * getTalentCostReduction());
   spawnBtn.textContent = '招募小球(' + formatGold(spawnCost) + '金)';
   spawnBtn.disabled = gameState.balls.length >= MAX_BALLS;
 
@@ -2648,7 +2675,8 @@ function updateUI() {
   const upgBtn = document.getElementById('btn-spawn-upgrade');
   if (upgBtn) {
     const ul = gameState.spawnLevel;
-    const upCost = ul * ul * 100000;
+    const rawUpCost = ul * ul * 100000;
+    const upCost = Math.ceil(rawUpCost * getTalentCostReduction());
     const canUp = gameState.coins >= upCost;
     upgBtn.textContent = '招募升级(Lv.' + ul + '→' + (ul + 1) + ' ' + formatGold(upCost) + '金)';
     upgBtn.disabled = !canUp;
@@ -2658,7 +2686,8 @@ function updateUI() {
   const maxUpgBtn = document.getElementById('btn-spawn-max-upgrade');
   if (maxUpgBtn) {
     const ul = gameState.spawnLevel;
-    const upCost = ul * ul * 100000;
+    const rawUpCost = ul * ul * 100000;
+    const upCost = Math.ceil(rawUpCost * getTalentCostReduction());
     const canUp = gameState.coins >= upCost;
     maxUpgBtn.disabled = !canUp;
     maxUpgBtn.className = canUp ? 'btn-spawn-max-upgrade ready' : 'btn-spawn-max-upgrade';
@@ -2668,7 +2697,8 @@ function updateUI() {
   if (mergeBtn) {
     const bestLv = getHighestLevelWithPair();
     if (bestLv >= 0) {
-      const cost = getMergeCost(bestLv);
+      const rawCost = getMergeCost(bestLv);
+      const cost = Math.ceil(rawCost * getTalentCostReduction());
       const canAfford = gameState.coins >= cost;
       mergeBtn.textContent = '合成 Lv.' + bestLv + '→' + (bestLv + 1) + ' (' + formatGold(cost) + '金)';
       mergeBtn.disabled = !canAfford;
@@ -2687,8 +2717,9 @@ function updateUI() {
     const n = Math.min(100, MAX_BALLS - gameState.balls.length);
     const cur = gameState.balls.length;
     const tc = 4 * sl * sl * (n * cur + n * (n + 1) / 2);
-    batchBtn.textContent = '招募' + n + '小球(' + formatGold(tc) + '金)';
-    batchBtn.disabled = n <= 0 || gameState.coins < tc;
+    const displayTc = Math.ceil(tc * getTalentCostReduction());
+    batchBtn.textContent = '招募' + n + '小球(' + formatGold(displayTc) + '金)';
+    batchBtn.disabled = n <= 0 || gameState.coins < displayTc;
     batchBtn.className = 'btn-spawn-batch unlocked';
   } else {
     batchBtn.textContent = '招募100小球(最高Lv.20解锁)';
@@ -2737,7 +2768,8 @@ function updateUI() {
     buyBtn.style.display = 'none';
   } else {
     buyBtn.style.display = '';
-    const c = getUnlockCost(next);
+    const rawC = getUnlockCost(next);
+    const c = Math.ceil(rawC * getTalentCostReduction());
     buyBtn.textContent = '购买弹跳板(' + formatGold(c) + '金)';
     buyBtn.disabled = false;
     buyBtn.className = gameState.coins >= c ? 'btn-buy-pad ready' : 'btn-buy-pad';
@@ -2745,7 +2777,8 @@ function updateUI() {
 
   const ub = document.getElementById('btn-upgrade');
   const al = gameState.bouncePads.every(p => p.unlocked);
-  const uc = getUpgradeCost(gameState.bouncePadLevel);
+  const rawUc = getUpgradeCost(gameState.bouncePadLevel);
+  const uc = Math.ceil(rawUc * getTalentCostReduction());
   const bl = gameState.bouncePadLevel;
   if (!al) { ub.textContent = '升级弹跳板(需解锁9个)'; ub.disabled = true; }
   else if (bl >= 10000) { ub.textContent = '弹跳板已满级'; ub.disabled = true; }
@@ -2839,8 +2872,14 @@ function initChallengeMode(stage, diff, playerMult, computerMult, customTiers) {
   gameState.playerCoinMult = pm;
   gameState.computerCoinMult = cm;
   gameState.currentStage = stage;
+  // 重置玩家状态（清空旧数据防止开局胜利bug）
+  gameState.balls = [];
+  gameState.coins = 0;
+  gameState.bouncePadLevel = 1;
+  gameState.spawnLevel = 1;
+  gameState.particles = [];
   gameState.challengeWinner = null;
-  gameState.customStrategy = customTiers || null;  // 自定义策略 [[1,2],[3,4],...] 或 null
+  gameState.customStrategy = customTiers || null;
 
   // 电脑状态
   gameState.computer = {
@@ -2867,9 +2906,10 @@ function initChallengeMode(stage, diff, playerMult, computerMult, customTiers) {
   // 初始化电脑弹跳板（基于半区遮罩，偏移+400）
   initChallengeBouncePads(false);
 
-  // 玩家初始球
+  // 玩家初始球（天赋加成额外球数）
   const pSp = getDefaultPadPositionChallenge(true);
-  for (let i = 0; i < 3; i++) {
+  const extraBalls = getTalentExtraBalls();
+  for (let i = 0; i < 3 + extraBalls; i++) {
     gameState.balls.push({
       x: pSp.x + (Math.random() - 0.5) * 40,
       y: pSp.y + (Math.random() - 0.5) * 20,
@@ -3140,7 +3180,8 @@ function selectMode(mode) {
       showToast('游戏已恢复（第' + gameState.currentStage + '关）', 'info');
     } else {
       initBouncePads();
-      for (let i = 0; i < 2; i++) {
+      const extraBalls = getTalentExtraBalls();
+      for (let i = 0; i < 2 + extraBalls; i++) {
         gameState.balls.push({
           x: 370 + i * 60, y: 140,
           vx: (i === 0 ? 3 : -2.5), vy: 0.5,
@@ -3217,7 +3258,8 @@ function startGame() {
       showToast('游戏已恢复（第' + gameState.currentStage + '关）', 'info');
     } else {
       initBouncePads();
-      for (let i = 0; i < 2; i++) {
+      const extraBalls = getTalentExtraBalls();
+      for (let i = 0; i < 2 + extraBalls; i++) {
         gameState.balls.push({
           x: 370 + i * 60, y: 140,
           vx: (i === 0 ? 3 : -2.5), vy: 0.5,
