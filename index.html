@@ -288,6 +288,12 @@
   .df2.d1.active { background: #ff9900; border-color: #ff9900; }
   .df2.d2.active { background: #cc3333; border-color: #cc3333; }
   .df2.d3.active { background: #9933cc; border-color: #9933cc; }
+  .df2.d4.active { background: #336699; border-color: #336699; }
+  .custom-inputs { display: none; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; }
+  .custom-inputs.show { display: grid; }
+  .custom-inputs label { font-size: 11px; color: #999; }
+  .custom-inputs input { width: 100%; padding: 6px 8px; border: 1px solid #2a2a45; border-radius: 5px;
+    background: #0a0a1a; color: #ccc; font-size: 12px; font-family: inherit; text-align: center; }
   .btn-start-ch { padding: 12px 30px; border: none; border-radius: 8px; font-size: 15px; font-weight: bold;
     cursor: pointer; background: linear-gradient(135deg,#009944,#00cc66); color: #fff; margin-top: 14px;
     letter-spacing: 2px; transition: all 0.2s; }
@@ -295,6 +301,32 @@
   .btn-back { display: inline-block; padding: 6px 16px; border: 1px solid #333; border-radius: 6px;
     background: transparent; color: #888; font-size: 12px; cursor: pointer; margin-top: 10px; }
   .btn-back:hover { color: #aaa; border-color: #555; }
+  /* 胜利对话框 */
+  #victory-dialog {
+    position: fixed; inset: 0; z-index: 2000;
+    background: rgba(5,5,20,0.9);
+    display: none; align-items: center; justify-content: center;
+  }
+  #victory-dialog.show { display: flex; }
+  .victory-card {
+    text-align: center; padding: 30px 24px; max-width: 380px; width: 85%;
+    background: #12122a; border: 2px solid #ffd700; border-radius: 16px;
+  }
+  .victory-card h2 { font-size: 24px; color: #ffd700; margin-bottom: 8px; }
+  .victory-card p { font-size: 14px; color: #aaa; margin-bottom: 20px; line-height: 1.6; }
+  .victory-card .btn-vic {
+    padding: 12px 36px; border: none; border-radius: 8px; font-size: 15px; font-weight: bold;
+    cursor: pointer; background: linear-gradient(135deg,#ff9900,#ff6600); color: #000; letter-spacing: 2px;
+  }
+  .victory-card .btn-vic:hover { box-shadow: 0 0 20px rgba(255,153,0,0.4); }
+  /* 顶部返回按钮 */
+  #btn-back-home {
+    position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
+    padding: 3px 10px; border: 1px solid #333; border-radius: 4px;
+    background: transparent; color: #888; font-size: 11px; cursor: pointer;
+    font-family: inherit; white-space: nowrap;
+  }
+  #btn-back-home:hover { color: #ff9900; border-color: #ff9900; }
 </style>
 </head>
 <body>
@@ -310,14 +342,28 @@
       <div class="letter-grid2" id="letter-grid2"></div>
       <div class="cfg-label">电脑难度：</div>
       <div class="diff-grid2" id="diff-grid2"></div>
+      <div class="custom-inputs" id="custom-inputs">
+        <div><label>玩家金币 %</label><input type="number" id="custom-player" value="50" min="1" max="10000"></div>
+        <div><label>电脑金币 %</label><input type="number" id="custom-computer" value="200" min="1" max="10000"></div>
+      </div>
       <button class="btn-start-ch" onclick="startChallengeFromPanel()">开始挑战</button>
       <br><button class="btn-back" onclick="backToModeSelect()">返回</button>
     </div>
   </div>
 </div>
 
+<!-- 胜利对话框 -->
+<div id="victory-dialog">
+  <div class="victory-card">
+    <h2 id="victory-title">胜利！</h2>
+    <p id="victory-desc"></p>
+    <button class="btn-vic" onclick="onVictoryConfirm()">返回挑战选择</button>
+  </div>
+</div>
+
 <div id="game-container">
   <div id="top-bar">
+    <button id="btn-back-home" onclick="backToHome()">← 首页</button>
     <span id="title">小球合成大作战</span>
   </div>
   <div id="canvas-wrap">
@@ -615,7 +661,7 @@ function initLetterBouncePads() {
     id: i,
     x: pt.x,
     y: pt.y,
-    unlocked: i === 0,
+    unlocked: i < 5,
     type: 'letter'
   }));
 }
@@ -843,8 +889,9 @@ const gameState = {
   spawnLevel: 1,
   running: true,
   mode: 'personal',      // 'personal' | 'challenge'
-  difficulty: 0,         // 0-3
-  diffMultiplier: 1.0,   // 难度倍数
+  difficulty: 0,         // 0-4: 普通/困难/地狱/自虐/自定义
+  playerCoinMult: 1.0,   // 玩家金币倍数
+  computerCoinMult: 1.0, // 电脑金币倍数
   computer: null,         // 挑战模式下的电脑状态
   challengeWinner: null   // 'player' | 'computer' | null
 };
@@ -917,7 +964,7 @@ function getUpgradeCost(curLv) {
   if (curLv === 2) return 15000;
   return 10000 + (curLv - 1) * 5000;
 }
-function addCoins(amt) { gameState.coins += amt; }
+function addCoins(amt) { gameState.coins += Math.floor(amt * gameState.playerCoinMult); }
 
 function getHighestLevel() {
   if (gameState.balls.length === 0) return 1;
@@ -935,7 +982,7 @@ function getHighestLevelFor(state) {
 }
 function addCoinsToComputer(amt) {
   if (!gameState.computer) return;
-  gameState.computer.coins += Math.floor(amt * gameState.diffMultiplier);
+  gameState.computer.coins += Math.floor(amt * gameState.computerCoinMult);
 }
 
 // 挑战模式粒子：根据isPlayer决定存入哪个粒子数组
@@ -1498,7 +1545,25 @@ function computerAI() {
   const cs = gameState.computer;
   if (!cs || gameState.challengeWinner) return;
 
-  // 1. 如果有可合成的球，尝试合成
+  // 优先级1: 购买跳板 + 招募小球
+  if (hasLockedPads(cs)) {
+    const padCost = getPadCostForState(cs);
+    if (cs.coins >= padCost) { computerBuyPad(); return; }
+  }
+  if (cs.balls.length < MAX_BALLS) {
+    const spawnC = getSpawnCostForState(cs);
+    if (cs.coins >= spawnC) { computerSpawnBall(); return; }
+  }
+
+  // 优先级2: 升级弹跳板 + 升级招募等级
+  if (canUpgradePads(cs)) {
+    const upgCost = getUpgradeCost(cs.bouncePadLevel);
+    if (cs.coins >= upgCost) { computerUpgradePads(); return; }
+  }
+  const spawnUpCost = getSpawnUpgradeCost(cs.spawnLevel);
+  if (cs.coins >= spawnUpCost) { computerUpgradeSpawn(); return; }
+
+  // 优先级3: 一键合成 + 一键升级
   if (hasMergeableBalls(cs)) {
     const lc = {};
     cs.balls.forEach(b => lc[b.level] = (lc[b.level] || 0) + 1);
@@ -1511,27 +1576,12 @@ function computerAI() {
       if (cs.coins >= mergeCost) { computerMergeBalls(); return; }
     }
   }
-
-  // 2. 如果金币 >= 升级招募等级费用，升级
-  const spawnUpCost = getSpawnUpgradeCost(cs.spawnLevel);
-  if (cs.coins >= spawnUpCost) { computerUpgradeSpawn(); return; }
-
-  // 3. 如果有未解锁的弹跳板且金币足够，购买
-  if (hasLockedPads(cs)) {
-    const padCost = getPadCostForState(cs);
-    if (cs.coins >= padCost) { computerBuyPad(); return; }
-  }
-
-  // 4. 如果有空闲空间，招募球
-  if (cs.balls.length < MAX_BALLS) {
-    const spawnC = getSpawnCostForState(cs);
-    if (cs.coins >= spawnC) { computerSpawnBall(); return; }
-  }
-
-  // 5. 如果可以升级弹跳板，升级
+  // 一键升级：如果所有跳板解锁，持续升级直到金币不够
   if (canUpgradePads(cs)) {
-    const upgCost = getUpgradeCost(cs.bouncePadLevel);
-    if (cs.coins >= upgCost) { computerUpgradePads(); return; }
+    while (cs.coins >= getUpgradeCost(cs.bouncePadLevel) && cs.bouncePadLevel < 10000) {
+      cs.coins -= getUpgradeCost(cs.bouncePadLevel);
+      cs.bouncePadLevel++;
+    }
   }
 }
 
@@ -2193,7 +2243,7 @@ function renderChallenge() {
   ctx.fillStyle = 'rgba(0,0,0,0.55)';
   ctx.strokeStyle = 'rgba(255,255,255,0.1)';
   ctx.lineWidth = 1;
-  roundRect(12, 8, 198, 118, 6);
+  roundRect(12, 8, 198, 132, 6);
 
   ctx.fillStyle = '#3399ff';
   ctx.font = 'bold 13px "Microsoft YaHei", Arial';
@@ -2215,11 +2265,15 @@ function renderChallenge() {
 
   ctx.fillStyle = '#ffaa44';
   ctx.font = '10px "Microsoft YaHei", Arial';
-  ctx.fillText('(所得金币×' + getCoinMultiplier().toFixed(1) + ')', 22, 78);
+  ctx.fillText('(所得×' + (getCoinMultiplier() * gameState.playerCoinMult).toFixed(1) + ')', 22, 78);
 
   ctx.fillStyle = '#66ccff';
   ctx.font = '10px "Microsoft YaHei", Arial';
   ctx.fillText('弹跳板: Lv.' + gameState.bouncePadLevel, 22, 94);
+
+  ctx.fillStyle = '#9966ff';
+  ctx.font = '9px "Microsoft YaHei", Arial';
+  ctx.fillText('金币比: 玩家' + (gameState.playerCoinMult * 100).toFixed(0) + '% / 电脑' + (gameState.computerCoinMult * 100).toFixed(0) + '%', 22, 112);
 
   // ===== 右上角：电脑面板 =====
   let cHighest = 0;
@@ -2252,7 +2306,7 @@ function renderChallenge() {
 
   ctx.fillStyle = '#ffaa44';
   ctx.font = '10px "Microsoft YaHei", Arial';
-  ctx.fillText('(所得金币×' + gameState.diffMultiplier.toFixed(1) + ')', panelX + 10, 78);
+  ctx.fillText('(所得金币×' + gameState.computerCoinMult.toFixed(1) + ')', panelX + 10, 78);
 
   ctx.fillStyle = '#66ccff';
   ctx.font = '10px "Microsoft YaHei", Arial';
@@ -2420,14 +2474,21 @@ function gameLoop() {
         }
       }
       if (gameState.challengeWinner) {
-        stopComputerAI();
-        if (gameState.challengeWinner === 'player') {
-          showToast('🏆 玩家胜利！率先达到 Lv.100！', 'success');
-        } else {
-          showToast('💀 电脑胜利！电脑率先达到 Lv.100！', 'error');
+          stopComputerAI();
+          gameState.running = false;
+          const titleEl = document.getElementById('victory-title');
+          const descEl = document.getElementById('victory-desc');
+          if (gameState.challengeWinner === 'player') {
+            titleEl.textContent = '玩家胜利！';
+            titleEl.style.color = '#ffd700';
+            descEl.textContent = '恭喜！你率先达到 Lv.100\n击败了电脑！';
+          } else {
+            titleEl.textContent = '电脑胜利！';
+            titleEl.style.color = '#ff4444';
+            descEl.textContent = '电脑率先达到 Lv.100\n再接再厉！';
+          }
+          document.getElementById('victory-dialog').classList.add('show');
         }
-        gameState.running = false;
-      }
     }
   } else {
     // 个人模式：100级通关
@@ -2455,11 +2516,19 @@ window.addEventListener('beforeunload', () => {
 });
 
 // ==================== 挑战模式初始化 ====================
-function initChallengeMode(stage, diff) {
-  const diffMultipliers = [1.0, 1.1, 1.2, 1.5];
+function initChallengeMode(stage, diff, playerMult, computerMult) {
+  const presets = {
+    0: [1.0, 1.0],      // 普通：玩家100%, 电脑100%
+    1: [0.8, 2.0],      // 困难：玩家80%, 电脑200%
+    2: [0.5, 10.0],     // 地狱：玩家50%, 电脑1000%
+    3: [0.2, 80.0],     // 自虐：玩家20%, 电脑8000%
+    4: [playerMult || 0.5, computerMult || 2.0]  // 自定义
+  };
+  const [pm, cm] = presets[diff] || presets[0];
   gameState.mode = 'challenge';
   gameState.difficulty = diff;
-  gameState.diffMultiplier = diffMultipliers[diff] || 1.0;
+  gameState.playerCoinMult = pm;
+  gameState.computerCoinMult = cm;
   gameState.currentStage = stage;
   gameState.challengeWinner = null;
 
@@ -2580,7 +2649,7 @@ function initChallengeBouncePads(isPlayer) {
     id: i,
     x: pt.x + xOffset,
     y: pt.y,
-    unlocked: i === 0,
+    unlocked: i < 5,
     type: 'letter'
   }));
 }
@@ -2600,7 +2669,7 @@ let panelSelectedLetter = 'A';
 let panelSelectedDiff = '0';
 const panelLetters = [];
 for (let i = 0; i < 26; i++) panelLetters.push(String.fromCharCode(65 + i));
-const panelDiffNames = { '0': '普通', '1': '困难(+10%金币)', '2': '地狱(+20%金币)', '3': '自虐(+50%金币)' };
+const panelDiffNames = { '0': '普通(100%/100%)', '1': '困难(80%/200%)', '2': '地狱(50%/1000%)', '3': '自虐(20%/8000%)', '4': '自定义' };
 
 function renderPanelLetters() {
   const g = document.getElementById('letter-grid2');
@@ -2619,7 +2688,11 @@ function renderPanelDiffs() {
   g.innerHTML = h;
 }
 function selLetter(l) { panelSelectedLetter = l; renderPanelLetters(); }
-function selDiff(d) { panelSelectedDiff = d; renderPanelDiffs(); }
+function selDiff(d) {
+  panelSelectedDiff = d;
+  renderPanelDiffs();
+  document.getElementById('custom-inputs').classList.toggle('show', d === '4');
+}
 function showChallengePanel() {
   document.getElementById('challenge-config').classList.add('show');
   renderPanelLetters();
@@ -2627,6 +2700,22 @@ function showChallengePanel() {
 }
 function backToModeSelect() {
   document.getElementById('challenge-config').classList.remove('show');
+}
+function backToHome() {
+  stopComputerAI();
+  gameState.running = false;
+  gameState.mode = 'personal';
+  gameState.computer = null;
+  gameState.challengeWinner = null;
+  gameState.playerCoinMult = 1.0;
+  gameState.computerCoinMult = 1.0;
+  document.getElementById('victory-dialog').classList.remove('show');
+  document.getElementById('mode-overlay').classList.remove('hidden');
+  document.getElementById('challenge-config').classList.remove('show');
+}
+function onVictoryConfirm() {
+  document.getElementById('victory-dialog').classList.remove('show');
+  backToHome();
 }
 function selectMode(mode) {
   document.getElementById('mode-overlay').classList.add('hidden');
@@ -2655,12 +2744,17 @@ function startChallengeFromPanel() {
   document.getElementById('mode-overlay').classList.add('hidden');
   const stageIndex = panelLetters.indexOf(panelSelectedLetter) + 1;
   const diff = parseInt(panelSelectedDiff);
-  initChallengeMode(stageIndex, diff);
+  let playerMult, computerMult;
+  if (diff === 4) {
+    playerMult = parseInt(document.getElementById('custom-player').value) / 100 || 0.5;
+    computerMult = parseInt(document.getElementById('custom-computer').value) / 100 || 2.0;
+  }
+  initChallengeMode(stageIndex, diff, playerMult, computerMult);
   updateUI();
   gameState.running = true;
   startComputerAI();
   gameLoop();
-  showToast('挑战模式：玩家 vs 电脑（难度' + diff + ' 倍数×' + gameState.diffMultiplier.toFixed(1) + '）', 'info');
+  showToast('挑战模式：玩家 vs 电脑（玩家×' + gameState.playerCoinMult.toFixed(1) + ' 电脑×' + gameState.computerCoinMult.toFixed(1) + '）', 'info');
 }
 
 // ==================== 启动 ====================
@@ -2670,15 +2764,17 @@ function startGame() {
   const urlStage = parseInt(params.get('stage'));
   const urlDiff = parseInt(params.get('diff'));
 
-  if (urlMode === 'challenge' && urlStage >= 1 && urlStage <= 26 && urlDiff >= 0 && urlDiff <= 3) {
+  if (urlMode === 'challenge' && urlStage >= 1 && urlStage <= 26 && urlDiff >= 0 && urlDiff <= 4) {
     // 有URL参数，直接启动挑战模式
     document.getElementById('mode-overlay').classList.add('hidden');
-    initChallengeMode(urlStage, urlDiff);
+    const urlPlayMult = parseFloat(params.get('pm')) || null;
+    const urlCompMult = parseFloat(params.get('cm')) || null;
+    initChallengeMode(urlStage, urlDiff, urlPlayMult, urlCompMult);
     updateUI();
     gameState.running = true;
     startComputerAI();
     gameLoop();
-    showToast('挑战模式：玩家 vs 电脑（难度' + urlDiff + ' 倍数×' + gameState.diffMultiplier.toFixed(1) + '）', 'info');
+    showToast('挑战模式：玩家 vs 电脑（玩家×' + gameState.playerCoinMult.toFixed(1) + ' 电脑×' + gameState.computerCoinMult.toFixed(1) + '）', 'info');
     return;
   }
 
