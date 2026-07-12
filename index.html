@@ -301,6 +301,23 @@
   .btn-back { display: inline-block; padding: 6px 16px; border: 1px solid #333; border-radius: 6px;
     background: transparent; color: #888; font-size: 12px; cursor: pointer; margin-top: 10px; }
   .btn-back:hover { color: #aaa; border-color: #555; }
+  /* 自定义策略配置 */
+  #custom-strategy { display: none; margin-top: 10px; }
+  #custom-strategy.show { display: block; }
+  .strat-row { margin-bottom: 8px; }
+  .strat-row .slabel { font-size: 11px; color: #9966ff; margin-bottom: 3px; display: block; }
+  .strat-opts { display: flex; flex-wrap: wrap; gap: 3px; }
+  .strat-opts label {
+    display: inline-flex; align-items: center; gap: 2px;
+    padding: 2px 6px; border: 1px solid #2a2a45; border-radius: 4px;
+    font-size: 10px; color: #888; cursor: pointer; background: #0a0a1a;
+    white-space: nowrap;
+  }
+  .strat-opts label.checked { border-color: #9966ff; color: #9966ff; background: #1a1a35; }
+  .strat-opts input { display: none; }
+  .btn-strat-default { padding: 4px 14px; border: 1px solid #444; border-radius: 4px;
+    background: transparent; color: #888; font-size: 11px; cursor: pointer; font-family: inherit; margin-top: 4px; }
+  .btn-strat-default:hover { border-color: #9966ff; color: #9966ff; }
   /* 胜利对话框 */
   #victory-dialog {
     position: fixed; inset: 0; z-index: 2000;
@@ -362,6 +379,21 @@
       <div class="custom-inputs" id="custom-inputs">
         <div><label>玩家金币 %</label><input type="number" id="custom-player" value="50" min="5" max="100000"></div>
         <div><label>电脑金币 %</label><input type="number" id="custom-computer" value="200" min="5" max="100000"></div>
+      </div>
+      <div id="custom-strategy">
+        <div class="strat-row">
+          <span class="slabel">第一优先（2~3个）:</span>
+          <div class="strat-opts" id="strat-p1"></div>
+        </div>
+        <div class="strat-row">
+          <span class="slabel">第二优先（2~3个）:</span>
+          <div class="strat-opts" id="strat-p2"></div>
+        </div>
+        <div class="strat-row">
+          <span class="slabel">第三优先（2~3个）:</span>
+          <div class="strat-opts" id="strat-p3"></div>
+        </div>
+        <button class="btn-strat-default" onclick="resetCustomStrategy()">默认（轮流所有功能）</button>
       </div>
       <button class="btn-start-ch" onclick="startChallengeFromPanel()">开始挑战</button>
       <br><button class="btn-back" onclick="backToModeSelect()">返回</button>
@@ -1565,6 +1597,62 @@ function canUpgradePads(state) {
   return state.bouncePads.every(p => p.unlocked) && state.bouncePadLevel < 10000;
 }
 
+// 7. 招募100小球（电脑）
+function computerSpawnBatch100() {
+  const cs = gameState.computer;
+  if (!cs) return;
+  const sl = cs.spawnLevel;
+  const n = Math.min(100, MAX_BALLS - cs.balls.length);
+  if (n <= 0) return;
+  const totalCost = n * n * 4 * sl * sl;
+  if (cs.coins < totalCost) return;
+  cs.coins -= totalCost;
+  for (let i = 0; i < n; i++) {
+    const sp = computerGetValidSpawnPoint();
+    cs.balls.push({
+      x: sp.x, y: sp.y,
+      vx: (Math.random() - 0.5) * 5, vy: 1,
+      radius: 14, level: sl,
+      color: getBallColor(sl), isActive: true
+    });
+  }
+}
+
+// 8. 一键合成（电脑）
+function computerMergeAll() {
+  const cs = gameState.computer;
+  if (!cs) return;
+  let merged = false;
+  for (let iter = 0; iter < 200; iter++) {
+    if (!hasMergeableBalls(cs)) break;
+    const lc = {};
+    cs.balls.forEach(b => lc[b.level] = (lc[b.level] || 0) + 1);
+    let highest = -1;
+    for (const [lv, cnt] of Object.entries(lc)) {
+      if (cnt >= 2) { const n = Number(lv); if (n > highest) highest = n; }
+    }
+    if (highest === -1) break;
+    const cost = getMergeCost(highest);
+    if (cs.coins < cost) break;
+    const sameLevel = cs.balls.filter(b => b.level === highest);
+    if (sameLevel.length < 2) break;
+    const [b1, b2] = sameLevel;
+    const midX = (b1.x + b2.x) / 2, midY = (b1.y + b2.y) / 2;
+    cs.coins -= cost;
+    cs.balls = cs.balls.filter(b => b !== b1 && b !== b2);
+    const nl = highest + 1;
+    const sp = halfMaskAlpha(Math.floor(midX - HALF_W), Math.floor(midY), computerMaskImageData) ? { x: midX, y: midY } : computerGetValidSpawnPoint();
+    cs.balls.push({
+      x: sp.x, y: sp.y,
+      vx: (Math.random() - 0.5) * 5, vy: -3,
+      radius: 14, level: nl,
+      color: getBallColor(nl), isActive: true
+    });
+    spawnHalfParticles(sp.x, sp.y, getBallColor(nl), 15, false);
+    merged = true;
+  }
+}
+
 // ==================== 电脑AI主循环 ====================
 let computerAIInterval = null;
 
@@ -1581,42 +1669,83 @@ function computerAI() {
   const cs = gameState.computer;
   if (!cs || gameState.challengeWinner) return;
 
-  // 优先级1: 购买跳板 + 招募小球
-  if (hasLockedPads(cs)) {
-    const padCost = getPadCostForState(cs);
-    if (cs.coins >= padCost) { computerBuyPad(); return; }
-  }
-  if (cs.balls.length < MAX_BALLS) {
-    const spawnC = getSpawnCostForState(cs);
-    if (cs.coins >= spawnC) { computerSpawnBall(); return; }
-  }
-
-  // 优先级2: 升级弹跳板 + 升级招募等级
-  if (canUpgradePads(cs)) {
-    const upgCost = getUpgradeCost(cs.bouncePadLevel);
-    if (cs.coins >= upgCost) { computerUpgradePads(); return; }
-  }
+  const diff = gameState.difficulty || 0;
+  const padCost = getPadCostForState(cs);
+  const spawnC = getSpawnCostForState(cs);
+  const upgCost = canUpgradePads(cs) ? getUpgradeCost(cs.bouncePadLevel) : Infinity;
   const spawnUpCost = getSpawnUpgradeCost(cs.spawnLevel);
-  if (cs.coins >= spawnUpCost) { computerUpgradeSpawn(); return; }
-
-  // 优先级3: 一键合成 + 一键升级
-  if (hasMergeableBalls(cs)) {
+  const canRecruit = cs.balls.length < MAX_BALLS;
+  const canBuyPad = hasLockedPads(cs);
+  const canUpgPad = canUpgradePads(cs) && cs.coins >= upgCost;
+  const canMerge = hasMergeableBalls(cs);
+  let mergeCost = Infinity, batchCost = Infinity;
+  if (canMerge) {
     const lc = {};
     cs.balls.forEach(b => lc[b.level] = (lc[b.level] || 0) + 1);
-    let highestPair = -1;
-    for (const [lv, count] of Object.entries(lc)) {
-      if (count >= 2) { const n = Number(lv); if (n > highestPair) highestPair = n; }
+    let hp = -1;
+    for (const [lv, cnt] of Object.entries(lc)) {
+      if (cnt >= 2) { const n = Number(lv); if (n > hp) hp = n; }
     }
-    if (highestPair >= 0) {
-      const mergeCost = getMergeCost(highestPair);
-      if (cs.coins >= mergeCost) { computerMergeBalls(); return; }
-    }
+    if (hp >= 0) mergeCost = getMergeCost(hp);
   }
-  // 一键升级：如果所有跳板解锁，持续升级直到金币不够
-  if (canUpgradePads(cs)) {
-    while (cs.coins >= getUpgradeCost(cs.bouncePadLevel) && cs.bouncePadLevel < 10000) {
-      cs.coins -= getUpgradeCost(cs.bouncePadLevel);
-      cs.bouncePadLevel++;
+  if (canRecruit) {
+    const n = Math.min(100, MAX_BALLS - cs.balls.length);
+    batchCost = n * n * 4 * cs.spawnLevel * cs.spawnLevel;
+  }
+
+  // 10种操作定义：id, cost(排序用), available, fn
+  const defs = [
+    { id: 1, cost: spawnUpCost, available: cs.coins >= spawnUpCost, fn: computerUpgradeSpawn },
+    { id: 2, cost: spawnC, available: canRecruit && cs.coins >= spawnC, fn: computerSpawnBall },
+    { id: 3, cost: padCost, available: canBuyPad && cs.coins >= padCost, fn: computerBuyPad },
+    { id: 4, cost: upgCost, available: canUpgPad, fn: computerUpgradePads },
+    { id: 5, cost: upgCost, available: canUpgradePads(cs) && cs.coins >= upgCost, fn: () => { while (cs.coins >= getUpgradeCost(cs.bouncePadLevel) && cs.bouncePadLevel < 10000) { cs.coins -= getUpgradeCost(cs.bouncePadLevel); cs.bouncePadLevel++; } } },
+    { id: 6, cost: mergeCost, available: canMerge && cs.coins >= mergeCost, fn: computerMergeBalls },
+    { id: 7, cost: batchCost, available: canRecruit && cs.coins >= batchCost, fn: computerSpawnBatch100 },
+    { id: 8, cost: mergeCost, available: canMerge && cs.coins >= mergeCost, fn: computerMergeAll },
+    { id: 9, cost: upgCost, available: canUpgPad, fn: computerUpgradePads },
+    { id: 10, cost: mergeCost, available: canMerge && cs.coins >= mergeCost, fn: computerMergeBalls },
+  ];
+  const actMap = {};
+  defs.forEach(d => actMap[d.id] = d);
+
+  // 自定义模式(diff=4)：优先用自定义策略，否则全部10种轮流
+  if (diff === 4) {
+    const custom = gameState.customStrategy;
+    if (custom && custom.length === 3) {
+      // 使用自定义三级优先级
+      for (const tier of custom) {
+        if (!tier.length) continue;
+        const avail = tier.map(id => actMap[id]).filter(a => a && a.available);
+        avail.sort((a, b) => a.cost - b.cost);
+        for (const a of avail) { a.fn(); return; }
+      }
+    }
+    // 默认：全部10种轮流
+    if (!cs._aiCursor) cs._aiCursor = 0;
+    for (let i = 0; i < 10; i++) {
+      const idx = (cs._aiCursor + i) % 10;
+      if (defs[idx].available) { defs[idx].fn(); cs._aiCursor = (idx + 1) % 10; return; }
+    }
+    cs._aiCursor = (cs._aiCursor + 1) % 10;
+    return;
+  }
+
+  // 固定难度策略：每组内成本低的优先
+  const strategy = {
+    0: [[2,3], [4,1], [5,6]],           // 普通
+    1: [[3,2], [1,4], [5,6]],           // 困难
+    2: [[3,2], [1,4], [5,6]],           // 地狱
+    3: [[1,2], [3,4], [5,6]],           // 自虐
+  };
+  const tiers = strategy[diff] || strategy[0];
+
+  for (const tier of tiers) {
+    const avail = tier.map(id => actMap[id]).filter(a => a.available);
+    avail.sort((a, b) => a.cost - b.cost);
+    for (const a of avail) {
+      a.fn();
+      return;
     }
   }
 }
@@ -2552,7 +2681,7 @@ window.addEventListener('beforeunload', () => {
 });
 
 // ==================== 挑战模式初始化 ====================
-function initChallengeMode(stage, diff, playerMult, computerMult) {
+function initChallengeMode(stage, diff, playerMult, computerMult, customTiers) {
   const presets = {
     0: [1.0, 1.0],      // 普通：玩家100%, 电脑100%
     1: [0.8, 2.0],      // 困难：玩家80%, 电脑200%
@@ -2567,6 +2696,7 @@ function initChallengeMode(stage, diff, playerMult, computerMult) {
   gameState.computerCoinMult = cm;
   gameState.currentStage = stage;
   gameState.challengeWinner = null;
+  gameState.customStrategy = customTiers || null;  // 自定义策略 [[1,2],[3,4],...] 或 null
 
   // 电脑状态
   gameState.computer = {
@@ -2728,6 +2858,58 @@ function selDiff(d) {
   panelSelectedDiff = d;
   renderPanelDiffs();
   document.getElementById('custom-inputs').classList.toggle('show', d === '4');
+  document.getElementById('custom-strategy').classList.toggle('show', d === '4');
+  if (d === '4') renderCustomStrategy();
+}
+
+// ===== 自定义策略配置 =====
+const STRAT_LABELS = {
+  1:'招募升级',2:'招募小球',3:'购买跳板',4:'升级跳板',5:'一键升级',
+  6:'一键合成',7:'招募100球',8:'一键合成',9:'升级弹跳板',10:'合成'
+};
+let customStratSelected = {}; // { 'p1': {1:true,2:true,3:true}, 'p2':{...}, 'p3':{...} }
+
+function renderCustomStrategy() {
+  ['p1','p2','p3'].forEach(pid => {
+    const container = document.getElementById('strat-' + pid);
+    if (!customStratSelected[pid]) customStratSelected[pid] = {};
+    let h = '';
+    for (let i = 1; i <= 10; i++) {
+      const sel = customStratSelected[pid][i];
+      h += `<label class="${sel?'checked':''}" onclick="toggleStrat('${pid}',${i})">${i}</label>`;
+    }
+    container.innerHTML = h;
+  });
+}
+function toggleStrat(pid, id) {
+  if (!customStratSelected[pid]) customStratSelected[pid] = {};
+  const cur = customStratSelected[pid][id];
+  if (cur) { customStratSelected[pid][id] = false; }
+  else {
+    const cnt = Object.values(customStratSelected[pid]).filter(Boolean).length;
+    if (cnt >= 3) { showToast('每个优先级最多选3个', 'error'); return; }
+    customStratSelected[pid][id] = true;
+  }
+  renderCustomStrategy();
+}
+function resetCustomStrategy() {
+  customStratSelected = {};
+  renderCustomStrategy();
+  showToast('已设为默认（轮流所有功能）', 'info');
+}
+function getCustomStrategyTiers() {
+  // 返回 [[id,id,id], [id,id,id], [id,id,id]] 或 null（表示默认轮流）
+  const result = [];
+  let hasAny = false;
+  ['p1','p2','p3'].forEach(pid => {
+    const ids = [];
+    for (let i = 1; i <= 10; i++) {
+      if (customStratSelected[pid] && customStratSelected[pid][i]) ids.push(i);
+    }
+    if (ids.length > 0) hasAny = true;
+    result.push(ids);
+  });
+  return hasAny ? result : null;
 }
 function showChallengePanel() {
   document.getElementById('challenge-config').classList.add('show');
@@ -2779,7 +2961,7 @@ function selectMode(mode) {
 function startChallengeFromPanel() {
   const stageIndex = panelLetters.indexOf(panelSelectedLetter) + 1;
   const diff = parseInt(panelSelectedDiff);
-  let playerMult, computerMult;
+  let playerMult, computerMult, customTiers = null;
   if (diff === 4) {
     const pv = parseInt(document.getElementById('custom-player').value);
     const cv = parseInt(document.getElementById('custom-computer').value);
@@ -2789,9 +2971,10 @@ function startChallengeFromPanel() {
     }
     playerMult = pv / 100;
     computerMult = cv / 100;
+    customTiers = getCustomStrategyTiers();
   }
   document.getElementById('mode-overlay').classList.add('hidden');
-  initChallengeMode(stageIndex, diff, playerMult, computerMult);
+  initChallengeMode(stageIndex, diff, playerMult, computerMult, customTiers);
   updateUI();
   gameState.running = true;
   startComputerAI();
