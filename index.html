@@ -1041,7 +1041,7 @@ const TALENTS = [
   { key: 'balls', name: '初始小球数', max: 100, unit: '个', perLv: 1 },
   { key: 'costDown', name: '升级费用减少', max: 100, unit: '%', perLv: 0.1 },
 ];
-let diamonds = parseInt(localStorage.getItem(DIAMOND_KEY)) || 0;
+let diamonds = parseInt(localStorage.getItem(DIAMOND_KEY)) || 1000000;
 let talents = JSON.parse(localStorage.getItem(TALENT_KEY) || '{}');
 // 确保每个天赋都有默认值
 TALENTS.forEach(t => { if (!(t.key in talents)) talents[t.key] = 0; });
