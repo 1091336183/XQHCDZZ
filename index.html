@@ -1883,19 +1883,22 @@ function computerAI() {
   if (moneyEnough) {
     // 金钱充足：执行P0（招募小球 或 升级小球）+ 同步购买/升级跳板
     if (inRecruitPhase) {
-      // P0 = 招募小球(oper 2)
       if (actMap[2] && actMap[2].available) actMap[2].fn();
     } else {
-      // 超过阈值后 P0 = 升级小球(oper 1)
       if (actMap[1] && actMap[1].available) actMap[1].fn();
     }
     // 金币足够时同步：购买跳板 + 升级跳板（与P0平行，不互斥）
     if (actMap[3] && actMap[3].available) actMap[3].fn();
     if (actMap[4] && actMap[4].available) actMap[4].fn();
-    // 再走后备策略执行其余操作
+    // 保持现有后备策略执行其余操作
     const fallback = getFallbackTiers();
     if (fallback) { execTiers(fallback); }
     else { execRoundRobin(); }
+    // 金币足够时：随机顺序遍历全部10个功能按钮，依次尝试执行
+    const shuffled = [...defs].sort(() => Math.random() - 0.5);
+    for (const d of shuffled) {
+      d.fn();
+    }
     return;
   } else {
     // 金钱不足：优先执行玩家选择的规则（后备策略）
@@ -2639,7 +2642,8 @@ function renderChallenge() {
 
   ctx.fillStyle = '#ffaa44';
   ctx.font = '10px "Microsoft YaHei", Arial';
-  ctx.fillText('(所得金币×' + gameState.computerCoinMult.toFixed(2) + ')', panelX + 10, 78);
+  const cCoinMult = getCoinMultiplierFor(cs) * gameState.computerCoinMult;
+  ctx.fillText('(所得金币×' + cCoinMult.toFixed(2) + ')', panelX + 10, 78);
 
   ctx.fillStyle = '#66ccff';
   ctx.font = '10px "Microsoft YaHei", Arial';
