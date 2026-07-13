@@ -1036,10 +1036,10 @@ const TALENT_KEY = 'ball_merge_talents';
 
 // 天赋定义: { key, name, max, unit, perLv }
 const TALENTS = [
-  { key: 'gold', name: '全局金币倍数', max: 100, unit: '%', perLv: 1 },
-  { key: 'speed', name: '战斗速度', max: 100, unit: '%', perLv: 0.01 },
-  { key: 'balls', name: '初始小球数', max: 100, unit: '个', perLv: 1 },
-  { key: 'costDown', name: '升级费用减少', max: 100, unit: '%', perLv: 0.1 },
+  { key: 'gold', name: '全局金币倍数', max: 999999, unit: '%', perLv: 1 },
+  { key: 'speed', name: '战斗速度', max: 9999, unit: '%', perLv: 1 },
+  { key: 'balls', name: '初始小球数', max: 97, unit: '个', perLv: 1 },
+  { key: 'costDown', name: '升级费用减少', max: 999, unit: '%', perLv: 0.1 },
 ];
 let diamonds = parseInt(localStorage.getItem(DIAMOND_KEY)) || 1000000;
 let talents = JSON.parse(localStorage.getItem(TALENT_KEY) || '{}');
@@ -1074,7 +1074,7 @@ function saveGame() {
 
 // ===== 天赋加成计算 =====
 function getTalentGoldMult() { return 1 + (talents.gold || 0) * 0.01; }
-function getTalentSpeedMult() { return 1 + (talents.speed || 0) * 0.0001; }
+function getTalentSpeedMult() { return 1 + (talents.speed || 0) * 0.01; }
 function getTalentExtraBalls() { return talents.balls || 0; }
 function getTalentCostReduction() { return 1 - (talents.costDown || 0) * 0.001; }
 function deductCoins(amount) {
@@ -2404,7 +2404,7 @@ function render() {
   if (getTalentGoldMult() > 1 || getTalentExtraBalls() > 0 || getTalentCostReduction() < 1 || (talents.speed || 0) > 0) {
     ctx.fillStyle = '#9966ff';
     ctx.font = '9px "Microsoft YaHei", Arial';
-    ctx.fillText('天赋: 金币×' + getTalentGoldMult().toFixed(2) + ' 球+' + getTalentExtraBalls() + ' 速+' + (talents.speed * 0.01).toFixed(2) + '% 费-' + (talents.costDown * 0.1).toFixed(1) + '%', 22, 102);
+    ctx.fillText('天赋: 金币×' + getTalentGoldMult().toFixed(2) + ' 球+' + getTalentExtraBalls() + ' 速+' + (talents.speed || 0) + '% 费-' + (talents.costDown * 0.1).toFixed(1) + '%', 22, 102);
   }
 
   ctx.fillStyle = '#66ccff';
@@ -2608,7 +2608,7 @@ function renderChallenge() {
   if (getTalentGoldMult() > 1 || getTalentExtraBalls() > 0 || getTalentCostReduction() < 1 || (talents.speed || 0) > 0) {
     ctx.fillStyle = '#aa77ff';
     ctx.font = '9px "Microsoft YaHei", Arial';
-    ctx.fillText('天赋: 金币×' + getTalentGoldMult().toFixed(2) + ' 球+' + getTalentExtraBalls() + ' 速+' + (talents.speed * 0.01).toFixed(2) + '% 费-' + (talents.costDown * 0.1).toFixed(1) + '%', 22, 122);
+    ctx.fillText('天赋: 金币×' + getTalentGoldMult().toFixed(2) + ' 球+' + getTalentExtraBalls() + ' 速+' + (talents.speed || 0) + '% 费-' + (talents.costDown * 0.1).toFixed(1) + '%', 22, 122);
   }
 
   // ===== 右上角：电脑面板 =====
